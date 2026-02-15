@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Star, Calendar, Clock, Film, ArrowLeft, Play, ExternalLink } from "lucide-react";
 import { getAnimeById, getAnimeRecommendations, type AnimeData } from "@/lib/jikan";
 import AnimeCard from "@/components/AnimeCard";
+import CommentSection from "@/components/CommentSection";
 
 const AnimeDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -41,7 +42,6 @@ const AnimeDetail = () => {
         <div className="container py-8 space-y-4">
           <div className="h-8 bg-secondary rounded w-1/3 animate-pulse" />
           <div className="h-4 bg-secondary rounded w-full animate-pulse" />
-          <div className="h-4 bg-secondary rounded w-2/3 animate-pulse" />
         </div>
       </div>
     );
@@ -62,46 +62,31 @@ const AnimeDetail = () => {
     { icon: Clock, label: "Duration", value: anime.duration },
   ].filter((d) => d.value);
 
+  const totalEps = anime.episodes || 12;
+
   return (
     <div className="min-h-screen">
       {/* Banner */}
       <div className="relative h-[50vh] min-h-[400px] overflow-hidden">
-        <img
-          src={anime.images.webp.large_image_url}
-          alt={anime.title}
-          className="absolute inset-0 w-full h-full object-cover blur-sm scale-105"
-        />
+        <img src={anime.images.webp.large_image_url} alt={anime.title} className="absolute inset-0 w-full h-full object-cover blur-sm scale-105" />
         <div className="absolute inset-0 bg-background/70" />
         <div className="absolute inset-0" style={{ background: "var(--gradient-hero)" }} />
 
         <div className="relative container h-full flex items-end pb-8">
-          <Link
-            to="/"
-            className="absolute top-20 left-4 md:left-[max(1rem,calc((100vw-1400px)/2+1rem))] flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
+          <Link to="/" className="absolute top-20 left-4 md:left-[max(1rem,calc((100vw-1400px)/2+1rem))] flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back
           </Link>
 
           <div className="flex gap-6 items-end">
-            <img
-              src={anime.images.webp.large_image_url}
-              alt={anime.title}
-              className="hidden md:block w-48 rounded-lg shadow-2xl border border-border"
-            />
+            <img src={anime.images.webp.large_image_url} alt={anime.title} className="hidden md:block w-48 rounded-lg shadow-2xl border border-border" />
             <div className="animate-fade-up">
               <div className="flex flex-wrap gap-2 mb-3">
-                {anime.genres.map((g) => (
-                  <span key={g.mal_id} className="px-2 py-0.5 rounded-md bg-primary/15 text-primary text-xs font-medium">
-                    {g.name}
-                  </span>
+                {anime.genres?.map((g) => (
+                  <span key={g.mal_id} className="px-2 py-0.5 rounded-md bg-primary/15 text-primary text-xs font-medium">{g.name}</span>
                 ))}
               </div>
-              <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground">
-                {anime.title_english || anime.title}
-              </h1>
-              {anime.title_japanese && (
-                <p className="text-sm text-muted-foreground mt-1">{anime.title_japanese}</p>
-              )}
+              <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground">{anime.title_english || anime.title}</h1>
+              {anime.title_japanese && <p className="text-sm text-muted-foreground mt-1">{anime.title_japanese}</p>}
 
               <div className="flex flex-wrap gap-4 mt-4">
                 {details.map((d) => (
@@ -112,6 +97,13 @@ const AnimeDetail = () => {
                   </div>
                 ))}
               </div>
+
+              <Link
+                to={`/watch/${id}/1`}
+                className="inline-flex items-center gap-2 mt-5 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity glow-primary"
+              >
+                <Play className="w-4 h-4 fill-current" /> Watch Episode 1
+              </Link>
             </div>
           </div>
         </div>
@@ -124,21 +116,30 @@ const AnimeDetail = () => {
             <div>
               <h2 className="text-lg font-display font-semibold text-foreground mb-3">Trailer</h2>
               <div className="relative aspect-video rounded-lg overflow-hidden bg-secondary">
-                <iframe
-                  src={`https://www.youtube.com/embed/${anime.trailer.youtube_id}`}
-                  title="Trailer"
-                  allowFullScreen
-                  className="absolute inset-0 w-full h-full"
-                />
+                <iframe src={`https://www.youtube.com/embed/${anime.trailer.youtube_id}`} title="Trailer" allowFullScreen className="absolute inset-0 w-full h-full" />
               </div>
             </div>
           )}
 
           <div>
             <h2 className="text-lg font-display font-semibold text-foreground mb-3">Synopsis</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-              {anime.synopsis || "No synopsis available."}
-            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{anime.synopsis || "No synopsis available."}</p>
+          </div>
+
+          {/* Episode list */}
+          <div>
+            <h2 className="text-lg font-display font-semibold text-foreground mb-3">Episodes</h2>
+            <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-8 lg:grid-cols-10 gap-2">
+              {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
+                <Link
+                  key={ep}
+                  to={`/watch/${id}/${ep}`}
+                  className="h-10 rounded-md bg-secondary flex items-center justify-center text-sm font-medium text-secondary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+                >
+                  {ep}
+                </Link>
+              ))}
+            </div>
           </div>
 
           {recs.length > 0 && (
@@ -151,6 +152,8 @@ const AnimeDetail = () => {
               </div>
             </div>
           )}
+
+          <CommentSection contentType="anime" contentId={id!} />
         </div>
 
         <div className="space-y-4">
@@ -160,14 +163,9 @@ const AnimeDetail = () => {
             <InfoRow label="Type" value={anime.type} />
             <InfoRow label="Source" value={anime.source} />
             <InfoRow label="Rating" value={anime.rating} />
-            <InfoRow
-              label="Studios"
-              value={anime.studios.map((s) => s.name).join(", ")}
-            />
+            <InfoRow label="Studios" value={anime.studios?.map((s) => s.name).join(", ")} />
             <InfoRow label="Season" value={anime.season ? `${anime.season} ${anime.year}` : null} />
-            {anime.members && (
-              <InfoRow label="Members" value={anime.members.toLocaleString()} />
-            )}
+            {anime.members && <InfoRow label="Members" value={anime.members.toLocaleString()} />}
           </div>
 
           <a
@@ -176,8 +174,7 @@ const AnimeDetail = () => {
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
           >
-            <ExternalLink className="w-4 h-4" />
-            View on MyAnimeList
+            <ExternalLink className="w-4 h-4" /> View on MyAnimeList
           </a>
         </div>
       </div>
