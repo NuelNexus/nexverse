@@ -45,7 +45,7 @@ const AnimeCard = ({ anime, index = 0 }: AnimeCardProps) => {
         <h3 className="text-sm font-medium text-foreground line-clamp-2 group-hover:text-primary transition-colors">
           {anime.title_english || anime.title}
         </h3>
-        {anime.genres.length > 0 && (
+        {anime.genres?.length > 0 && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
             {anime.genres.map((g) => g.name).join(", ")}
           </p>
