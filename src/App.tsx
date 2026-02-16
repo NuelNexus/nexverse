@@ -14,6 +14,10 @@ import MangaReader from "./pages/MangaReader";
 import Leaderboard from "./pages/Leaderboard";
 import Messages from "./pages/Messages";
 import Auth from "./pages/Auth";
+import Groups from "./pages/Groups";
+import GroupChat from "./pages/GroupChat";
+import Profile from "./pages/Profile";
+import AnimeVoting from "./pages/AnimeVoting";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +39,10 @@ const App = () => (
           <Route path="/manga/:mangaId/read/:chapterId" element={<MangaReader />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/messages" element={<Messages />} />
+          <Route path="/groups" element={<Groups />} />
+          <Route path="/groups/:groupId" element={<GroupChat />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/vote" element={<AnimeVoting />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
