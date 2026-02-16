@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Search, Menu, X, LogIn, LogOut, MessageSquare, Trophy } from "lucide-react";
+import { Search, Menu, X, LogIn, LogOut, MessageSquare, Trophy, Users, Vote, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,8 @@ import { toast } from "sonner";
 const navLinks = [
   { label: "Anime", to: "/browse" },
   { label: "Manga", to: "/manga" },
+  { label: "Groups", to: "/groups" },
+  { label: "Vote", to: "/vote" },
   { label: "Leaderboard", to: "/leaderboard" },
 ];
 
@@ -60,9 +62,14 @@ const Navbar = () => {
             <Search className="w-4 h-4" />
           </Link>
           {user && (
-            <Link to="/messages" className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-              <MessageSquare className="w-4 h-4" />
-            </Link>
+            <>
+              <Link to="/messages" className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <MessageSquare className="w-4 h-4" />
+              </Link>
+              <Link to="/profile" className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <User className="w-4 h-4" />
+              </Link>
+            </>
           )}
           {user ? (
             <button onClick={handleLogout} className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
@@ -98,7 +105,10 @@ const Navbar = () => {
                 </Link>
               ))}
               {user && (
-                <Link to="/messages" onClick={() => setMobileOpen(false)} className="text-sm font-medium py-2 text-muted-foreground">Messages</Link>
+                <>
+                  <Link to="/messages" onClick={() => setMobileOpen(false)} className="text-sm font-medium py-2 text-muted-foreground">Messages</Link>
+                  <Link to="/profile" onClick={() => setMobileOpen(false)} className="text-sm font-medium py-2 text-muted-foreground">Profile</Link>
+                </>
               )}
             </div>
           </motion.div>

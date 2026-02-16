@@ -1,4 +1,4 @@
-const MANGADEX_BASE = "https://api.mangadex.org";
+const PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mangadex-proxy`;
 
 export interface MangaData {
   id: string;
@@ -46,8 +46,17 @@ function getDescription(manga: MangaData): string {
 
 export const mangaUtils = { getCoverUrl, getTitle, getDescription };
 
+async function proxyFetch(path: string, params: Record<string, string> = {}) {
+  const url = new URL(PROXY_BASE);
+  url.searchParams.set("path", path);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("MangaDex API error");
+  return res.json();
+}
+
 export async function searchManga(query: string, limit = 20, offset = 0) {
-  const params = new URLSearchParams({
+  return proxyFetch("/manga", {
     title: query,
     limit: String(limit),
     offset: String(offset),
@@ -55,46 +64,32 @@ export async function searchManga(query: string, limit = 20, offset = 0) {
     "contentRating[]": "safe",
     "order[relevance]": "desc",
   });
-  const res = await fetch(`${MANGADEX_BASE}/manga?${params}`);
-  if (!res.ok) throw new Error("MangaDex API error");
-  return res.json();
 }
 
 export async function getPopularManga(limit = 20) {
-  const params = new URLSearchParams({
+  return proxyFetch("/manga", {
     limit: String(limit),
     "includes[]": "cover_art",
     "contentRating[]": "safe",
     "order[followedCount]": "desc",
   });
-  const res = await fetch(`${MANGADEX_BASE}/manga?${params}`);
-  if (!res.ok) throw new Error("MangaDex API error");
-  return res.json();
 }
 
 export async function getMangaById(id: string) {
-  const params = new URLSearchParams({ "includes[]": "cover_art" });
-  const res = await fetch(`${MANGADEX_BASE}/manga/${id}?${params}`);
-  if (!res.ok) throw new Error("MangaDex API error");
-  return res.json();
+  return proxyFetch(`/manga/${id}`, { "includes[]": "cover_art" });
 }
 
 export async function getMangaChapters(id: string, limit = 50, offset = 0) {
-  const params = new URLSearchParams({
+  return proxyFetch(`/manga/${id}/feed`, {
     limit: String(limit),
     offset: String(offset),
     "translatedLanguage[]": "en",
     "order[chapter]": "asc",
   });
-  const res = await fetch(`${MANGADEX_BASE}/manga/${id}/feed?${params}`);
-  if (!res.ok) throw new Error("MangaDex API error");
-  return res.json();
 }
 
 export async function getChapterPages(chapterId: string) {
-  const res = await fetch(`${MANGADEX_BASE}/at-home/server/${chapterId}`);
-  if (!res.ok) throw new Error("MangaDex API error");
-  const data = await res.json();
+  const data = await proxyFetch(`/at-home/server/${chapterId}`);
   const baseUrl = data.baseUrl;
   const hash = data.chapter.hash;
   const pages = data.chapter.data as string[];
