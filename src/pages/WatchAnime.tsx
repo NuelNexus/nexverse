@@ -1,31 +1,74 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Download, ExternalLink } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, Loader2 } from "lucide-react";
 import { getAnimeById, type AnimeData } from "@/lib/jikan";
+import { getAniListId } from "@/lib/anilist";
 import { supabase } from "@/integrations/supabase/client";
 import CommentSection from "@/components/CommentSection";
-
-const EMBED_SOURCES = [
-  { name: "Server 1", getUrl: (title: string, ep: number) => `https://2anime.xyz/embed/${slugify(title)}-episode-${ep}` },
-  { name: "Server 2", getUrl: (title: string, ep: number) => `https://embtaku.pro/streaming.php?id=${slugify(title)}-episode-${ep}` },
-];
 
 function slugify(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+interface EmbedSource {
+  name: string;
+  getUrl: (ctx: { title: string; ep: number; malId: number; anilistId: number | null }) => string | null;
+}
+
+const EMBED_SOURCES: EmbedSource[] = [
+  {
+    name: "VidSrc",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidsrc.icu/embed/anime/${anilistId}/${ep}/0` : null,
+  },
+  {
+    name: "AutoEmbed",
+    getUrl: ({ title, ep }) =>
+      `https://anime.autoembed.cc/embed/${slugify(title)}-episode-${ep}`,
+  },
+  {
+    name: "EmbedsTo",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://player.smashy.stream/anime/${anilistId}/${ep}` : null,
+  },
+  {
+    name: "2Anime",
+    getUrl: ({ title, ep }) =>
+      `https://2anime.xyz/embed/${slugify(title)}-episode-${ep}`,
+  },
+  {
+    name: "GogoAnime",
+    getUrl: ({ title, ep }) =>
+      `https://embtaku.pro/streaming.php?id=${slugify(title)}-episode-${ep}`,
+  },
+];
+
 const WatchAnime = () => {
   const { id, episode } = useParams<{ id: string; episode: string }>();
   const [anime, setAnime] = useState<AnimeData | null>(null);
+  const [anilistId, setAnilistId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [iframeError, setIframeError] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    getAnimeById(Number(id))
-      .then((res) => setAnime(res.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    setLoading(true);
+    const load = async () => {
+      try {
+        const [animeRes, alId] = await Promise.all([
+          getAnimeById(Number(id)),
+          getAniListId(Number(id)),
+        ]);
+        setAnime(animeRes.data);
+        setAnilistId(alId);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, [id]);
 
   // Track watch history
@@ -45,10 +88,15 @@ const WatchAnime = () => {
     track();
   }, [anime, episode]);
 
+  // Reset iframe error when source changes
+  useEffect(() => {
+    setIframeError(false);
+  }, [sourceIndex]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
       </div>
     );
   }
@@ -56,7 +104,15 @@ const WatchAnime = () => {
   const title = anime ? (anime.title_english || anime.title) : "Anime";
   const totalEps = anime?.episodes || 12;
   const epNum = Number(episode);
-  const embedUrl = anime ? EMBED_SOURCES[sourceIndex].getUrl(title, epNum) : "";
+
+  const availableSources = EMBED_SOURCES.filter((s) =>
+    s.getUrl({ title, ep: epNum, malId: Number(id), anilistId }) !== null
+  );
+
+  const currentSource = availableSources[sourceIndex] || availableSources[0];
+  const embedUrl = currentSource
+    ? currentSource.getUrl({ title, ep: epNum, malId: Number(id), anilistId }) || ""
+    : "";
 
   const downloadSearchUrl = `https://nyaa.si/?f=0&c=1_2&q=${encodeURIComponent(title + ` ${episode}`)}`;
   const bulkDownloadUrl = `https://nyaa.si/?f=0&c=1_2&q=${encodeURIComponent(title)}`;
@@ -76,9 +132,9 @@ const WatchAnime = () => {
         </h1>
 
         {/* Server selector */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs text-muted-foreground">Source:</span>
-          {EMBED_SOURCES.map((s, i) => (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-xs text-muted-foreground">Server:</span>
+          {availableSources.map((s, i) => (
             <button
               key={s.name}
               onClick={() => setSourceIndex(i)}
@@ -93,17 +149,31 @@ const WatchAnime = () => {
           ))}
         </div>
 
+        {availableSources.length === 0 && (
+          <div className="aspect-video rounded-lg bg-secondary flex items-center justify-center mb-4">
+            <p className="text-muted-foreground text-sm">No servers available for this anime. Try a different title.</p>
+          </div>
+        )}
+
         {/* Video player */}
-        <div className="relative aspect-video rounded-lg overflow-hidden bg-secondary mb-4">
-          <iframe
-            src={embedUrl}
-            title={`${title} Episode ${episode}`}
-            allowFullScreen
-            allow="autoplay; fullscreen"
-            className="absolute inset-0 w-full h-full"
-            sandbox="allow-scripts allow-same-origin allow-popups"
-          />
-        </div>
+        {availableSources.length > 0 && (
+          <div className="relative aspect-video rounded-lg overflow-hidden bg-secondary mb-2">
+            <iframe
+              key={embedUrl}
+              src={embedUrl}
+              title={`${title} Episode ${episode}`}
+              allowFullScreen
+              allow="autoplay; fullscreen; encrypted-media"
+              className="absolute inset-0 w-full h-full"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground mb-4">
+          If a server doesn't load, try switching to another one above. Some servers may be slower or blocked in your region.
+        </p>
 
         {/* Download links */}
         <div className="flex flex-wrap gap-2 mb-6">
