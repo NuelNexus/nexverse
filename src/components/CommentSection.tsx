@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Send, MessageSquare } from "lucide-react";
@@ -8,7 +8,6 @@ interface Comment {
   user_id: string;
   body: string;
   created_at: string;
-  profiles?: { username: string; avatar_url: string | null } | null;
 }
 
 interface CommentSectionProps {
@@ -17,7 +16,7 @@ interface CommentSectionProps {
 }
 
 const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [comments, setComments] = useState<(Comment & { username?: string; avatar_url?: string | null })[]>([]);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -26,17 +25,32 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 
+  const loadComments = async () => {
+    const { data } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("content_type", contentType)
+      .eq("content_id", contentId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (!data) return;
+
+    // Load profiles separately
+    const userIds = [...new Set(data.map((c) => c.user_id))];
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from("profiles").select("id, username, avatar_url").in("id", userIds)
+      : { data: [] };
+    const profileMap: Record<string, { username: string; avatar_url: string | null }> = {};
+    profiles?.forEach((p) => { profileMap[p.id] = p; });
+
+    setComments(data.map((c) => ({
+      ...c,
+      username: profileMap[c.user_id]?.username,
+      avatar_url: profileMap[c.user_id]?.avatar_url,
+    })));
+  };
+
   useEffect(() => {
-    const loadComments = async () => {
-      const { data } = await supabase
-        .from("comments")
-        .select("*, profiles(username, avatar_url)")
-        .eq("content_type", contentType)
-        .eq("content_id", contentId)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (data) setComments(data as any);
-    };
     loadComments();
 
     const channel = supabase
@@ -46,9 +60,7 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
         schema: "public",
         table: "comments",
         filter: `content_id=eq.${contentId}`,
-      }, () => {
-        loadComments();
-      })
+      }, () => loadComments())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -67,11 +79,8 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
       content_id: contentId,
       body: body.trim(),
     });
-    if (error) {
-      toast.error("Failed to post comment");
-    } else {
-      setBody("");
-    }
+    if (error) toast.error("Failed to post comment");
+    else setBody("");
     setLoading(false);
   };
 
@@ -106,10 +115,10 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
             <div className="flex items-center gap-2 mb-1">
               <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
                 <span className="text-primary text-xs font-bold">
-                  {(c.profiles as any)?.username?.[0]?.toUpperCase() || "?"}
+                  {c.username?.[0]?.toUpperCase() || "?"}
                 </span>
               </div>
-              <span className="text-sm font-medium text-foreground">{(c.profiles as any)?.username || "User"}</span>
+              <span className="text-sm font-medium text-foreground">{c.username || "User"}</span>
               <span className="text-xs text-muted-foreground">
                 {new Date(c.created_at).toLocaleDateString()}
               </span>

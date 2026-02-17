@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark } from "lucide-react";
 import { getMangaById, getMangaChapters, type MangaData, type ChapterData, mangaUtils } from "@/lib/mangadex";
+import { supabase } from "@/integrations/supabase/client";
 import CommentSection from "@/components/CommentSection";
 
 const MangaDetail = () => {
@@ -9,6 +10,8 @@ const MangaDetail = () => {
   const [manga, setManga] = useState<MangaData | null>(null);
   const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [continueChapterId, setContinueChapterId] = useState<string | null>(null);
+  const [continueChapterNum, setContinueChapterNum] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -17,10 +20,29 @@ const MangaDetail = () => {
       try {
         const [mangaRes, chapRes] = await Promise.all([
           getMangaById(id),
-          getMangaChapters(id),
+          getMangaChapters(id, 200),
         ]);
         setManga(mangaRes.data);
-        setChapters(chapRes.data || []);
+        // Filter out external-url chapters (those redirect to MangaDex)
+        const readableChapters = (chapRes.data || []).filter(
+          (ch: any) => !ch.attributes.externalUrl
+        );
+        setChapters(readableChapters);
+
+        // Load reading progress
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: progress } = await supabase
+            .from("manga_reading_progress")
+            .select("chapter_id, chapter_number")
+            .eq("user_id", user.id)
+            .eq("manga_id", id)
+            .single();
+          if (progress) {
+            setContinueChapterId(progress.chapter_id);
+            setContinueChapterNum(progress.chapter_number);
+          }
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -58,7 +80,12 @@ const MangaDetail = () => {
         </Link>
 
         <div className="flex flex-col md:flex-row gap-6 mb-8">
-          <img src={cover} alt={title} className="w-48 rounded-lg shadow-lg border border-border flex-shrink-0" />
+          <img
+            src={cover}
+            alt={title}
+            className="w-48 rounded-lg shadow-lg border border-border flex-shrink-0"
+            onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+          />
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">{title}</h1>
             <div className="flex flex-wrap gap-2 mt-3">
@@ -76,19 +103,42 @@ const MangaDetail = () => {
               <span>Status: <span className="text-foreground capitalize">{manga.attributes.status}</span></span>
               {manga.attributes.year && <span>Year: <span className="text-foreground">{manga.attributes.year}</span></span>}
             </div>
+
+            <div className="flex gap-3 mt-5">
+              {chapters.length > 0 && (
+                <Link
+                  to={`/manga/${id}/read/${chapters[0].id}`}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <BookOpen className="w-4 h-4" /> Read Ch. 1
+                </Link>
+              )}
+              {continueChapterId && (
+                <Link
+                  to={`/manga/${id}/read/${continueChapterId}`}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-semibold hover:bg-secondary/80 transition-colors"
+                >
+                  <Bookmark className="w-4 h-4" /> Continue Ch. {continueChapterNum || "?"}
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 
         <h2 className="text-xl font-display font-semibold text-foreground mb-4">Chapters ({chapters.length})</h2>
         <div className="grid gap-2 mb-8">
           {chapters.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No English chapters available.</p>
+            <p className="text-muted-foreground text-sm">No readable English chapters available.</p>
           ) : (
             chapters.map((ch) => (
               <Link
                 key={ch.id}
                 to={`/manga/${id}/read/${ch.id}`}
-                className="flex items-center justify-between p-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
+                className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                  ch.id === continueChapterId
+                    ? "bg-primary/10 border border-primary/30"
+                    : "bg-secondary hover:bg-secondary/80"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <BookOpen className="w-4 h-4 text-primary" />
@@ -96,6 +146,9 @@ const MangaDetail = () => {
                     Ch. {ch.attributes.chapter || "?"}
                     {ch.attributes.title && ` - ${ch.attributes.title}`}
                   </span>
+                  {ch.id === continueChapterId && (
+                    <span className="text-xs text-primary font-medium">← Continue</span>
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground">{ch.attributes.pages} pages</span>
               </Link>
