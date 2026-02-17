@@ -162,6 +162,42 @@ export type Database = {
         }
         Relationships: []
       }
+      manga_reading_progress: {
+        Row: {
+          chapter_id: string
+          chapter_number: string | null
+          id: string
+          manga_cover_url: string | null
+          manga_id: string
+          manga_title: string
+          page_number: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          chapter_id: string
+          chapter_number?: string | null
+          id?: string
+          manga_cover_url?: string | null
+          manga_id: string
+          manga_title: string
+          page_number?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          chapter_id?: string
+          chapter_number?: string | null
+          id?: string
+          manga_cover_url?: string | null
+          manga_id?: string
+          manga_title?: string
+          page_number?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           body: string

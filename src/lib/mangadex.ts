@@ -23,6 +23,7 @@ export interface ChapterData {
     pages: number;
     translatedLanguage: string;
     publishAt: string;
+    externalUrl: string | null;
   };
 }
 
