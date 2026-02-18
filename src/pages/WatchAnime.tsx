@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Download, ExternalLink, Loader2 } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Download, ExternalLink, Loader2, Play } from "lucide-react";
 import { getAnimeById, type AnimeData } from "@/lib/jikan";
 import { getAniListId } from "@/lib/anilist";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,11 +45,13 @@ const EMBED_SOURCES: EmbedSource[] = [
 
 const WatchAnime = () => {
   const { id, episode } = useParams<{ id: string; episode: string }>();
+  const navigate = useNavigate();
   const [anime, setAnime] = useState<AnimeData | null>(null);
   const [anilistId, setAnilistId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [iframeError, setIframeError] = useState(false);
+  const autoplay = localStorage.getItem("nexus-autoplay") === "true";
 
   useEffect(() => {
     if (!id) return;
@@ -171,9 +173,19 @@ const WatchAnime = () => {
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground mb-4">
-          If a server doesn't load, try switching to another one above. Some servers may be slower or blocked in your region.
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-muted-foreground">
+            If a server doesn't load, try switching to another one above.
+          </p>
+          {autoplay && epNum < totalEps && (
+            <Link
+              to={`/watch/${id}/${epNum + 1}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+            >
+              <Play className="w-3.5 h-3.5" /> Next Episode
+            </Link>
+          )}
+        </div>
 
         {/* Download links */}
         <div className="flex flex-wrap gap-2 mb-6">

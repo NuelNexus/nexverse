@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Send, Users, Smile } from "lucide-react";
+import { ArrowLeft, Send, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -111,112 +111,106 @@ const GroupChat = () => {
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Header - Instagram style */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border">
-        <div className="container max-w-2xl flex items-center gap-3 h-14">
-          <Link to="/groups" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0">
-            <Users className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-semibold text-foreground truncate">{groupName}</h1>
-            <p className="text-xs text-muted-foreground">{members.length} members</p>
-          </div>
+    <div className="fixed inset-0 top-16 bg-background flex flex-col">
+      {/* Header - flush to edges */}
+      <div className="flex items-center gap-3 px-4 h-14 border-b border-border flex-shrink-0">
+        <Link to="/groups" className="text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="w-5 h-5" />
+        </Link>
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0">
+          <Users className="w-4 h-4 text-primary-foreground" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-semibold text-foreground truncate">{groupName}</h1>
+          <p className="text-xs text-muted-foreground">{members.length} members</p>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto pt-14 pb-20">
-        <div className="container max-w-2xl px-4 py-4">
-          {groupedMessages.length === 0 && (
-            <p className="text-center text-muted-foreground text-sm py-16">No messages yet. Say hi!</p>
-          )}
-          {groupedMessages.map((group) => (
-            <div key={group.date}>
-              <div className="flex justify-center my-4">
-                <span className="text-xs text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full">
-                  {formatDateSeparator(group.msgs[0].created_at)}
-                </span>
-              </div>
-              {group.msgs.map((msg, idx) => {
-                const isMe = msg.user_id === user?.id;
-                const profile = profiles[msg.user_id];
-                const prevMsg = idx > 0 ? group.msgs[idx - 1] : null;
-                const showAvatar = !isMe && (!prevMsg || prevMsg.user_id !== msg.user_id);
-
-                return (
-                  <div key={msg.id} className={`flex items-end gap-2 mb-1 ${isMe ? "flex-row-reverse" : ""}`}>
-                    {/* Avatar */}
-                    <div className="w-7 flex-shrink-0">
-                      {showAvatar && !isMe ? (
-                        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
-                          {profile?.avatar_url ? (
-                            <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-xs font-bold text-muted-foreground">
-                              {(profile?.username || "?")[0].toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"} flex flex-col`}>
-                      {showAvatar && !isMe && (
-                        <span className="text-[11px] text-muted-foreground ml-1 mb-0.5">
-                          {profile?.username || "User"}
-                        </span>
-                      )}
-                      <div
-                        className={`px-3.5 py-2 text-sm leading-relaxed ${
-                          isMe
-                            ? "bg-primary text-primary-foreground rounded-[20px] rounded-br-[4px]"
-                            : "bg-secondary text-secondary-foreground rounded-[20px] rounded-bl-[4px]"
-                        }`}
-                      >
-                        {msg.body}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground mt-0.5 mx-1">
-                        {formatTime(msg.created_at)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {groupedMessages.length === 0 && (
+          <p className="text-center text-muted-foreground text-sm py-16">No messages yet. Say hi!</p>
+        )}
+        {groupedMessages.map((group) => (
+          <div key={group.date}>
+            <div className="flex justify-center my-4">
+              <span className="text-xs text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full">
+                {formatDateSeparator(group.msgs[0].created_at)}
+              </span>
             </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
+            {group.msgs.map((msg, idx) => {
+              const isMe = msg.user_id === user?.id;
+              const profile = profiles[msg.user_id];
+              const prevMsg = idx > 0 ? group.msgs[idx - 1] : null;
+              const showAvatar = !isMe && (!prevMsg || prevMsg.user_id !== msg.user_id);
+
+              return (
+                <div key={msg.id} className={`flex items-end gap-2 mb-1 ${isMe ? "flex-row-reverse" : ""}`}>
+                  {/* Avatar */}
+                  <div className="w-7 flex-shrink-0">
+                    {showAvatar && !isMe ? (
+                      <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
+                        {profile?.avatar_url ? (
+                          <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xs font-bold text-muted-foreground">
+                            {(profile?.username || "?")[0].toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className={`max-w-[75%] ${isMe ? "items-end" : "items-start"} flex flex-col`}>
+                    {showAvatar && !isMe && (
+                      <span className="text-[11px] text-muted-foreground ml-1 mb-0.5">
+                        {profile?.username || "User"}
+                      </span>
+                    )}
+                    <div
+                      className={`px-3.5 py-2 text-sm leading-relaxed ${
+                        isMe
+                          ? "bg-primary text-primary-foreground rounded-[20px] rounded-br-[4px]"
+                          : "bg-secondary text-secondary-foreground rounded-[20px] rounded-bl-[4px]"
+                      }`}
+                    >
+                      {msg.body}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground mt-0.5 mx-1">
+                      {formatTime(msg.created_at)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Input - Instagram style */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t border-border">
-        <div className="container max-w-2xl py-2 px-4">
-          {user ? (
-            <form onSubmit={handleSend} className="flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-secondary rounded-full px-4">
-                <input
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder="Message..."
-                  className="flex-1 h-10 bg-transparent text-foreground text-sm placeholder:text-muted-foreground focus:outline-none"
-                />
-              </div>
-              {body.trim() ? (
-                <button type="submit" className="text-primary font-semibold text-sm hover:opacity-80">
-                  Send
-                </button>
-              ) : null}
-            </form>
-          ) : (
-            <p className="text-center text-muted-foreground text-sm py-2">
-              <Link to="/auth" className="text-primary hover:underline">Sign in</Link> to chat
-            </p>
-          )}
-        </div>
+      {/* Input - flush to bottom edge */}
+      <div className="border-t border-border px-4 py-2 flex-shrink-0">
+        {user ? (
+          <form onSubmit={handleSend} className="flex items-center gap-2">
+            <div className="flex-1 flex items-center bg-secondary rounded-full px-4">
+              <input
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Message..."
+                className="flex-1 h-10 bg-transparent text-foreground text-sm placeholder:text-muted-foreground focus:outline-none"
+              />
+            </div>
+            {body.trim() ? (
+              <button type="submit" className="text-primary font-semibold text-sm hover:opacity-80">
+                Send
+              </button>
+            ) : null}
+          </form>
+        ) : (
+          <p className="text-center text-muted-foreground text-sm py-2">
+            <Link to="/auth" className="text-primary hover:underline">Sign in</Link> to chat
+          </p>
+        )}
       </div>
     </div>
   );
