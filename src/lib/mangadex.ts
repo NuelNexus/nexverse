@@ -5,6 +5,7 @@ export interface MangaData {
   attributes: {
     title: Record<string, string>;
     description: Record<string, string>;
+    altTitles?: Record<string, string>[];
     status: string;
     year: number | null;
     contentRating: string;
@@ -37,7 +38,15 @@ function getCoverUrl(manga: MangaData): string {
 
 function getTitle(manga: MangaData): string {
   const t = manga.attributes.title;
-  return t.en || t["ja-ro"] || Object.values(t)[0] || "Untitled";
+  // Prefer English title
+  if (t.en) return t.en;
+  // Check alt titles for English
+  if (manga.attributes.altTitles) {
+    for (const alt of manga.attributes.altTitles) {
+      if (alt.en) return alt.en;
+    }
+  }
+  return t["ja-ro"] || Object.values(t)[0] || "Untitled";
 }
 
 function getDescription(manga: MangaData): string {
@@ -47,10 +56,16 @@ function getDescription(manga: MangaData): string {
 
 export const mangaUtils = { getCoverUrl, getTitle, getDescription };
 
-async function proxyFetch(path: string, params: Record<string, string> = {}) {
+async function proxyFetch(path: string, params: Record<string, string | string[]> = {}) {
   const url = new URL(PROXY_BASE);
   url.searchParams.set("path", path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
+  Object.entries(params).forEach(([k, v]) => {
+    if (Array.isArray(v)) {
+      v.forEach((val) => url.searchParams.append(k, val));
+    } else {
+      url.searchParams.append(k, v);
+    }
+  });
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("MangaDex API error");
   return res.json();
@@ -61,23 +76,25 @@ export async function searchManga(query: string, limit = 20, offset = 0) {
     title: query,
     limit: String(limit),
     offset: String(offset),
-    "includes[]": "cover_art",
-    "contentRating[]": "safe",
+    "includes[]": ["cover_art", "author"],
+    "contentRating[]": ["safe", "suggestive"],
+    "availableTranslatedLanguage[]": "en",
     "order[relevance]": "desc",
   });
 }
 
-export async function getPopularManga(limit = 20) {
+export async function getPopularManga(limit = 24) {
   return proxyFetch("/manga", {
     limit: String(limit),
-    "includes[]": "cover_art",
-    "contentRating[]": "safe",
+    "includes[]": ["cover_art", "author"],
+    "contentRating[]": ["safe", "suggestive"],
+    "availableTranslatedLanguage[]": "en",
     "order[followedCount]": "desc",
   });
 }
 
 export async function getMangaById(id: string) {
-  return proxyFetch(`/manga/${id}`, { "includes[]": "cover_art" });
+  return proxyFetch(`/manga/${id}`, { "includes[]": ["cover_art", "author"] });
 }
 
 export async function getMangaChapters(id: string, limit = 50, offset = 0) {
@@ -86,6 +103,7 @@ export async function getMangaChapters(id: string, limit = 50, offset = 0) {
     offset: String(offset),
     "translatedLanguage[]": "en",
     "order[chapter]": "asc",
+    "includes[]": "scanlation_group",
   });
 }
 

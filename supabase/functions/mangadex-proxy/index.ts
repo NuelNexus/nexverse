@@ -20,14 +20,17 @@ serve(async (req) => {
       });
     }
 
-    // Forward all query params except "path" to MangaDex
-    const params = new URLSearchParams();
+    // Build MangaDex URL preserving array params like includes[], contentRating[], etc.
+    const mdUrl = new URL(`https://api.mangadex.org${path}`);
     url.searchParams.forEach((v, k) => {
-      if (k !== "path") params.append(k, v);
+      if (k !== "path") {
+        mdUrl.searchParams.append(k, v);
+      }
     });
 
-    const mdUrl = `https://api.mangadex.org${path}${params.toString() ? `?${params}` : ""}`;
-    const res = await fetch(mdUrl, {
+    console.log("Proxying to:", mdUrl.toString());
+
+    const res = await fetch(mdUrl.toString(), {
       headers: { "User-Agent": "NexusVerse/1.0" },
     });
     const data = await res.json();
