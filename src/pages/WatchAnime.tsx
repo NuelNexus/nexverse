@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, ExternalLink, Loader2, Play } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, Loader2, Play, SkipForward } from "lucide-react";
 import { getAnimeById, type AnimeData } from "@/lib/jikan";
 import { getAniListId } from "@/lib/anilist";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,8 +50,9 @@ const WatchAnime = () => {
   const [anilistId, setAnilistId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [sourceIndex, setSourceIndex] = useState(0);
-  const [iframeError, setIframeError] = useState(false);
-  const autoplay = localStorage.getItem("nexus-autoplay") === "true";
+  const [autoplay, setAutoplay] = useState(localStorage.getItem("nexus-autoplay") === "true");
+  const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -90,10 +91,42 @@ const WatchAnime = () => {
     track();
   }, [anime, episode]);
 
-  // Reset iframe error when source changes
   useEffect(() => {
-    setIframeError(false);
-  }, [sourceIndex]);
+    setAutoNextCountdown(null);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+  }, [sourceIndex, episode]);
+
+  const title = anime ? (anime.title_english || anime.title) : "Anime";
+  const totalEps = anime?.episodes || 12;
+  const epNum = Number(episode);
+  const hasNextEp = epNum < totalEps;
+
+  // Auto-next episode timer
+  const startAutoNext = () => {
+    if (!hasNextEp || !autoplay) return;
+    setAutoNextCountdown(10);
+    countdownRef.current = setInterval(() => {
+      setAutoNextCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          navigate(`/watch/${id}/${epNum + 1}`);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const cancelAutoNext = () => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    setAutoNextCountdown(null);
+  };
+
+  const toggleAutoplay = () => {
+    const next = !autoplay;
+    setAutoplay(next);
+    localStorage.setItem("nexus-autoplay", String(next));
+  };
 
   if (loading) {
     return (
@@ -103,14 +136,9 @@ const WatchAnime = () => {
     );
   }
 
-  const title = anime ? (anime.title_english || anime.title) : "Anime";
-  const totalEps = anime?.episodes || 12;
-  const epNum = Number(episode);
-
   const availableSources = EMBED_SOURCES.filter((s) =>
     s.getUrl({ title, ep: epNum, malId: Number(id), anilistId }) !== null
   );
-
   const currentSource = availableSources[sourceIndex] || availableSources[0];
   const embedUrl = currentSource
     ? currentSource.getUrl({ title, ep: epNum, malId: Number(id), anilistId }) || ""
@@ -133,32 +161,39 @@ const WatchAnime = () => {
           {title} - Episode {episode}
         </h1>
 
-        {/* Server selector */}
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <span className="text-xs text-muted-foreground">Server:</span>
-          {availableSources.map((s, i) => (
-            <button
-              key={s.name}
-              onClick={() => setSourceIndex(i)}
-              className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                i === sourceIndex
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
+        {/* Server selector + autoplay toggle */}
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Server:</span>
+            {availableSources.map((s, i) => (
+              <button
+                key={s.name}
+                onClick={() => setSourceIndex(i)}
+                className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                  i === sourceIndex
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={toggleAutoplay}
+            className={`px-3 py-1 text-xs rounded-md transition-colors flex items-center gap-1.5 ${
+              autoplay
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+            }`}
+          >
+            <SkipForward className="w-3 h-3" />
+            Autoplay {autoplay ? "ON" : "OFF"}
+          </button>
         </div>
 
-        {availableSources.length === 0 && (
-          <div className="aspect-video rounded-lg bg-secondary flex items-center justify-center mb-4">
-            <p className="text-muted-foreground text-sm">No servers available for this anime. Try a different title.</p>
-          </div>
-        )}
-
         {/* Video player */}
-        {availableSources.length > 0 && (
+        {availableSources.length > 0 ? (
           <div className="relative aspect-video rounded-lg overflow-hidden bg-secondary mb-2">
             <iframe
               key={embedUrl}
@@ -171,46 +206,54 @@ const WatchAnime = () => {
               referrerPolicy="no-referrer"
             />
           </div>
+        ) : (
+          <div className="aspect-video rounded-lg bg-secondary flex items-center justify-center mb-4">
+            <p className="text-muted-foreground text-sm">No servers available. Try a different title.</p>
+          </div>
         )}
 
-        <div className="flex items-center justify-between mb-4">
+        {/* Auto-next countdown + controls */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <p className="text-xs text-muted-foreground">
             If a server doesn't load, try switching to another one above.
           </p>
-          {autoplay && epNum < totalEps && (
-            <Link
-              to={`/watch/${id}/${epNum + 1}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-            >
-              <Play className="w-3.5 h-3.5" /> Next Episode
-            </Link>
-          )}
+          <div className="flex items-center gap-2">
+            {autoNextCountdown !== null && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-primary font-medium">Next episode in {autoNextCountdown}s</span>
+                <button onClick={cancelAutoNext} className="px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                  Cancel
+                </button>
+              </div>
+            )}
+            {hasNextEp && (
+              <Link
+                to={`/watch/${id}/${epNum + 1}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+              >
+                <Play className="w-3.5 h-3.5" /> Next Episode
+              </Link>
+            )}
+            {hasNextEp && autoplay && autoNextCountdown === null && (
+              <button
+                onClick={startAutoNext}
+                className="px-3 py-1.5 text-xs rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              >
+                Start Auto-Next
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Download links */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <a
-            href={downloadSearchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors"
-          >
+          <a href={downloadSearchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors">
             <Download className="w-4 h-4" /> Download Episode {episode}
           </a>
-          <a
-            href={bulkDownloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors"
-          >
+          <a href={bulkDownloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors">
             <Download className="w-4 h-4" /> Bulk Download
           </a>
-          <a
-            href={`https://myanimelist.net/anime/${id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors"
-          >
+          <a href={`https://myanimelist.net/anime/${id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 transition-colors">
             <ExternalLink className="w-4 h-4" /> MAL
           </a>
         </div>

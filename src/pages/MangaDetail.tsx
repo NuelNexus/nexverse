@@ -1,17 +1,26 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, BookOpen, Bookmark } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, BookOpen, Bookmark, Globe } from "lucide-react";
 import { getMangaById, getMangaChapters, type MangaData, type ChapterData, mangaUtils } from "@/lib/mangadex";
 import { supabase } from "@/integrations/supabase/client";
 import CommentSection from "@/components/CommentSection";
 
+const MANGA_PROVIDERS = [
+  { id: "mangadex", name: "MangaDex", getReaderUrl: (mangaId: string, chapterId: string) => `/manga/${mangaId}/read/${chapterId}` },
+  { id: "mangafire", name: "MangaFire", getExternalUrl: (title: string) => `https://mangafire.to/manga/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` },
+  { id: "mangakakalot", name: "MangaKakalot", getExternalUrl: (title: string) => `https://mangakakalot.com/search/story/${encodeURIComponent(title)}` },
+  { id: "comick", name: "ComicK", getExternalUrl: (title: string) => `https://comick.io/search?q=${encodeURIComponent(title)}` },
+];
+
 const MangaDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [manga, setManga] = useState<MangaData | null>(null);
   const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [loading, setLoading] = useState(true);
   const [continueChapterId, setContinueChapterId] = useState<string | null>(null);
   const [continueChapterNum, setContinueChapterNum] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState("mangadex");
 
   useEffect(() => {
     if (!id) return;
@@ -23,13 +32,11 @@ const MangaDetail = () => {
           getMangaChapters(id, 200),
         ]);
         setManga(mangaRes.data);
-        // Filter out external-url chapters (those redirect to MangaDex)
         const readableChapters = (chapRes.data || []).filter(
           (ch: any) => !ch.attributes.externalUrl
         );
         setChapters(readableChapters);
 
-        // Load reading progress
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data: progress } = await supabase
@@ -104,7 +111,7 @@ const MangaDetail = () => {
               {manga.attributes.year && <span>Year: <span className="text-foreground">{manga.attributes.year}</span></span>}
             </div>
 
-            <div className="flex gap-3 mt-5">
+            <div className="flex gap-3 mt-5 flex-wrap">
               {chapters.length > 0 && (
                 <Link
                   to={`/manga/${id}/read/${chapters[0].id}`}
@@ -125,36 +132,79 @@ const MangaDetail = () => {
           </div>
         </div>
 
-        <h2 className="text-xl font-display font-semibold text-foreground mb-4">Chapters ({chapters.length})</h2>
-        <div className="grid gap-2 mb-8">
-          {chapters.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No readable English chapters available.</p>
-          ) : (
-            chapters.map((ch) => (
-              <Link
-                key={ch.id}
-                to={`/manga/${id}/read/${ch.id}`}
-                className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
-                  ch.id === continueChapterId
-                    ? "bg-primary/10 border border-primary/30"
-                    : "bg-secondary hover:bg-secondary/80"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <BookOpen className="w-4 h-4 text-primary" />
-                  <span className="text-sm text-foreground">
-                    Ch. {ch.attributes.chapter || "?"}
-                    {ch.attributes.title && ` - ${ch.attributes.title}`}
-                  </span>
-                  {ch.id === continueChapterId && (
-                    <span className="text-xs text-primary font-medium">← Continue</span>
-                  )}
-                </div>
-                <span className="text-xs text-muted-foreground">{ch.attributes.pages} pages</span>
-              </Link>
-            ))
-          )}
+        {/* Provider selector */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-sm text-muted-foreground">Read on:</span>
+          {MANGA_PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setSelectedProvider(p.id)}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                selectedProvider === p.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
         </div>
+
+        {/* External provider links */}
+        {selectedProvider !== "mangadex" && (
+          <div className="glass rounded-lg p-4 mb-6">
+            <p className="text-sm text-muted-foreground mb-3">
+              Read <span className="text-foreground font-medium">{title}</span> on {MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.name}:
+            </p>
+            <a
+              href={MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.getExternalUrl?.(title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+            >
+              <Globe className="w-4 h-4" /> Open in {MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.name}
+            </a>
+          </div>
+        )}
+
+        {/* MangaDex chapters */}
+        {selectedProvider === "mangadex" && (
+          <>
+            <h2 className="text-xl font-display font-semibold text-foreground mb-4">Chapters ({chapters.length})</h2>
+            <div className="grid gap-2 mb-8">
+              {chapters.length === 0 ? (
+                <div className="glass rounded-lg p-6 text-center">
+                  <p className="text-muted-foreground text-sm mb-3">No readable English chapters on MangaDex.</p>
+                  <p className="text-xs text-muted-foreground">Try another provider above (MangaFire, MangaKakalot, or ComicK).</p>
+                </div>
+              ) : (
+                chapters.map((ch) => (
+                  <Link
+                    key={ch.id}
+                    to={`/manga/${id}/read/${ch.id}`}
+                    className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                      ch.id === continueChapterId
+                        ? "bg-primary/10 border border-primary/30"
+                        : "bg-secondary hover:bg-secondary/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <BookOpen className="w-4 h-4 text-primary" />
+                      <span className="text-sm text-foreground">
+                        Ch. {ch.attributes.chapter || "?"}
+                        {ch.attributes.title && ` - ${ch.attributes.title}`}
+                      </span>
+                      {ch.id === continueChapterId && (
+                        <span className="text-xs text-primary font-medium">← Continue</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{ch.attributes.pages} pages</span>
+                  </Link>
+                ))
+              )}
+            </div>
+          </>
+        )}
 
         <CommentSection contentType="manga" contentId={id!} />
       </div>

@@ -2,3 +2,6 @@ project_id = "ohdrezvcfpxcxgiplmya"
 
 [functions.mangadex-proxy]
 verify_jwt = false
+
+[functions.ai-anime]
+verify_jwt = false
