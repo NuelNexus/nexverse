@@ -10,6 +10,8 @@ const navLinks = [
   { label: "Manga", to: "/manga" },
   { label: "Groups", to: "/groups" },
   { label: "Vote", to: "/vote" },
+  { label: "Debates", to: "/debates" },
+  { label: "Watch Party", to: "/watch-together" },
   { label: "Leaderboard", to: "/leaderboard" },
 ];
 

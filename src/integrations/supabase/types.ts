@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      anime_debate_votes: {
+        Row: {
+          created_at: string
+          debate_id: string
+          id: string
+          user_id: string
+          vote: string
+        }
+        Insert: {
+          created_at?: string
+          debate_id: string
+          id?: string
+          user_id: string
+          vote: string
+        }
+        Update: {
+          created_at?: string
+          debate_id?: string
+          id?: string
+          user_id?: string
+          vote?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "anime_debate_votes_debate_id_fkey"
+            columns: ["debate_id"]
+            isOneToOne: false
+            referencedRelation: "anime_debates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      anime_debates: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          option_a: string
+          option_a_image: string | null
+          option_b: string
+          option_b_image: string | null
+          topic: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          option_a: string
+          option_a_image?: string | null
+          option_b: string
+          option_b_image?: string | null
+          topic: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          option_a?: string
+          option_a_image?: string | null
+          option_b?: string
+          option_b_image?: string | null
+          topic?: string
+        }
+        Relationships: []
+      }
       anime_votes: {
         Row: {
           anime_image: string | null
@@ -279,6 +344,71 @@ export type Database = {
           id?: string
           user_id?: string
           watched_at?: string
+        }
+        Relationships: []
+      }
+      watch_room_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_room_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "watch_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_rooms: {
+        Row: {
+          anime_image: string | null
+          anime_mal_id: number
+          anime_title: string
+          created_at: string
+          created_by: string
+          episode: number
+          id: string
+          is_active: boolean
+        }
+        Insert: {
+          anime_image?: string | null
+          anime_mal_id: number
+          anime_title: string
+          created_at?: string
+          created_by: string
+          episode?: number
+          id?: string
+          is_active?: boolean
+        }
+        Update: {
+          anime_image?: string | null
+          anime_mal_id?: number
+          anime_title?: string
+          created_at?: string
+          created_by?: string
+          episode?: number
+          id?: string
+          is_active?: boolean
         }
         Relationships: []
       }

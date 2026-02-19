@@ -18,6 +18,9 @@ import Groups from "./pages/Groups";
 import GroupChat from "./pages/GroupChat";
 import Profile from "./pages/Profile";
 import AnimeVoting from "./pages/AnimeVoting";
+import AnimeDebates from "./pages/AnimeDebates";
+import WatchTogetherList from "./pages/WatchTogetherList";
+import WatchTogether from "./pages/WatchTogether";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +46,9 @@ const App = () => (
           <Route path="/groups/:groupId" element={<GroupChat />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/vote" element={<AnimeVoting />} />
+          <Route path="/debates" element={<AnimeDebates />} />
+          <Route path="/watch-together" element={<WatchTogetherList />} />
+          <Route path="/watch-together/:roomId" element={<WatchTogether />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

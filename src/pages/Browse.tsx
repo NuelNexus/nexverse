@@ -2,40 +2,20 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Sparkles, Loader2 } from "lucide-react";
 import { searchAnime, getTopAnime, type AnimeData } from "@/lib/jikan";
+import { supabase } from "@/integrations/supabase/client";
 import AnimeCard from "@/components/AnimeCard";
-
-const GEMINI_API_KEY = "AIzaSyBm_zq7xxG5078DmB3MN6midScxcF-pVBQ";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+import { toast } from "sonner";
 
 async function aiAnimeSearch(description: string): Promise<string[]> {
   try {
-    const res = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `Given this description, suggest up to 8 real anime titles that match. Return ONLY a JSON array of anime title strings, nothing else. No markdown, no explanation.
-
-Description: "${description}"
-
-Example output: ["Naruto", "Attack on Titan", "Death Note"]`,
-              },
-            ],
-          },
-        ],
-      }),
+    const { data, error } = await supabase.functions.invoke("ai-anime", {
+      body: { action: "search", description },
     });
-    const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-    // Extract JSON array from response
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) return [];
-    return JSON.parse(match[0]);
-  } catch (e) {
+    if (error) throw error;
+    return data?.titles || [];
+  } catch (e: any) {
     console.error("AI search error:", e);
+    toast.error(e?.message || "AI search failed");
     return [];
   }
 }
@@ -51,9 +31,7 @@ const Browse = () => {
   const performSearch = useCallback(async (q: string) => {
     setLoading(true);
     try {
-      const res = q.trim()
-        ? await searchAnime(q)
-        : await getTopAnime(1);
+      const res = q.trim() ? await searchAnime(q) : await getTopAnime(1);
       setResults(res.data);
     } catch (e) {
       console.error(e);
@@ -72,7 +50,6 @@ const Browse = () => {
         setResults([]);
         return;
       }
-      // Search each title and collect unique results
       const allResults: AnimeData[] = [];
       const seen = new Set<number>();
       for (const title of titles.slice(0, 6)) {
@@ -84,9 +61,7 @@ const Browse = () => {
               allResults.push(anime);
             }
           }
-        } catch {
-          // skip failed searches
-        }
+        } catch { /* skip */ }
       }
       setResults(allResults);
     } catch (e) {
@@ -116,14 +91,11 @@ const Browse = () => {
       <div className="container">
         <h1 className="text-3xl font-display font-bold text-foreground mb-6">Browse Anime</h1>
 
-        {/* Search mode toggle */}
         <div className="flex items-center gap-3 mb-4">
           <button
             onClick={() => setAiMode(false)}
             className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-              !aiMode
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              !aiMode ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
             }`}
           >
             <Search className="w-3.5 h-3.5 inline mr-1.5" />
@@ -132,9 +104,7 @@ const Browse = () => {
           <button
             onClick={() => setAiMode(true)}
             className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-              aiMode
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              aiMode ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 inline mr-1.5" />
@@ -153,17 +123,13 @@ const Browse = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={
-                aiMode
-                  ? "Describe what you want... e.g. 'anime where the hero is overpowered and goes to school'"
-                  : "Search anime by title..."
-              }
+              placeholder={aiMode ? "Describe what you want... e.g. 'overpowered hero in a magic school'" : "Search anime by title..."}
               className="w-full h-12 pl-11 pr-4 rounded-lg bg-secondary text-foreground placeholder:text-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-shadow"
             />
           </div>
           {aiMode && (
             <p className="text-xs text-muted-foreground mt-2 ml-1">
-              Powered by AI — describe a mood, plot, or genre and get personalized recommendations
+              Powered by Gemini 2.5 — describe a mood, plot, or genre and get personalized recommendations
             </p>
           )}
         </form>
