@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Send, MessageSquare } from "lucide-react";
+import { Send, MessageSquare, User } from "lucide-react";
 
 interface Comment {
   id: string;
@@ -35,7 +35,6 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
       .limit(50);
     if (!data) return;
 
-    // Load profiles separately
     const userIds = [...new Set(data.map((c) => c.user_id))];
     const { data: profiles } = userIds.length > 0
       ? await supabase.from("profiles").select("id, username, avatar_url").in("id", userIds)
@@ -113,17 +112,19 @@ const CommentSection = ({ contentType, contentId }: CommentSectionProps) => {
         {comments.map((c) => (
           <div key={c.id} className="p-3 rounded-lg bg-secondary/50">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-primary text-xs font-bold">
-                  {c.username?.[0]?.toUpperCase() || "?"}
-                </span>
+              <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                {c.avatar_url ? (
+                  <img src={c.avatar_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-3.5 h-3.5 text-primary" />
+                )}
               </div>
               <span className="text-sm font-medium text-foreground">{c.username || "User"}</span>
               <span className="text-xs text-muted-foreground">
                 {new Date(c.created_at).toLocaleDateString()}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground pl-8">{c.body}</p>
+            <p className="text-sm text-muted-foreground pl-9">{c.body}</p>
           </div>
         ))}
         {comments.length === 0 && (
