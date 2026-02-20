@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { Swords, Loader2, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ const AnimeDebates = () => {
 
   const loadDebate = async () => {
     setLoading(true);
-    // Get the latest debate
     const { data: debates } = await supabase
       .from("anime_debates")
       .select("*")
@@ -42,7 +40,6 @@ const AnimeDebates = () => {
     setDebate(latestDebate);
 
     if (latestDebate) {
-      // Load votes
       const { data: votes } = await supabase
         .from("anime_debate_votes")
         .select("vote")
@@ -53,7 +50,6 @@ const AnimeDebates = () => {
         setVotesB(votes.filter(v => v.vote === "b").length);
       }
 
-      // Check user's vote
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: userVote } = await supabase
@@ -75,20 +71,8 @@ const AnimeDebates = () => {
         body: { action: "debate" },
       });
       if (error) throw error;
-      const d = data?.debate;
-      if (!d) throw new Error("No debate generated");
+      if (!data?.debate) throw new Error("No debate generated");
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("anime_debates")
-        .insert({
-          topic: d.topic,
-          option_a: d.option_a,
-          option_b: d.option_b,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
       toast.success("New debate generated!");
       loadDebate();
     } catch (e: any) {
@@ -103,7 +87,6 @@ const AnimeDebates = () => {
     if (!debate) return;
 
     if (myVote) {
-      // Update vote
       await supabase.from("anime_debate_votes")
         .update({ vote })
         .eq("debate_id", debate.id)
@@ -118,7 +101,6 @@ const AnimeDebates = () => {
     }
     toast.success("Vote cast!");
     setMyVote(vote);
-    // Optimistic update
     if (vote === "a") {
       setVotesA(v => v + (myVote === "b" ? 1 : myVote ? 0 : 1));
       if (myVote === "b") setVotesB(v => v - 1);
@@ -163,7 +145,6 @@ const AnimeDebates = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Debate topic */}
             <div className="glass rounded-xl p-6 text-center">
               <h2 className="text-xl font-display font-bold text-foreground mb-2">{debate.topic}</h2>
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -172,7 +153,6 @@ const AnimeDebates = () => {
               </div>
             </div>
 
-            {/* Voting options */}
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => handleVote("a")}

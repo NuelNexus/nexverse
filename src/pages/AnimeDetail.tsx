@@ -5,6 +5,17 @@ import { getAnimeById, getAnimeRecommendations, type AnimeData } from "@/lib/jik
 import AnimeCard from "@/components/AnimeCard";
 import CommentSection from "@/components/CommentSection";
 
+function extractYoutubeId(anime: AnimeData): string | null {
+  if (anime.trailer?.youtube_id) return anime.trailer.youtube_id;
+  // Jikan sometimes has youtube_id as null but embed_url contains the ID
+  const embedUrl = (anime.trailer as any)?.embed_url || (anime.trailer as any)?.url;
+  if (embedUrl) {
+    const match = embedUrl.match(/(?:embed\/|v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 const AnimeDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [anime, setAnime] = useState<AnimeData | null>(null);
@@ -54,6 +65,8 @@ const AnimeDetail = () => {
       </div>
     );
   }
+
+  const youtubeId = extractYoutubeId(anime);
 
   const details = [
     { icon: Star, label: "Score", value: anime.score?.toFixed(1) },
@@ -112,11 +125,17 @@ const AnimeDetail = () => {
       {/* Content */}
       <div className="container py-8 grid md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-6">
-          {anime.trailer?.youtube_id && (
+          {youtubeId && (
             <div>
               <h2 className="text-lg font-display font-semibold text-foreground mb-3">Trailer</h2>
               <div className="relative aspect-video rounded-lg overflow-hidden bg-secondary">
-                <iframe src={`https://www.youtube.com/embed/${anime.trailer.youtube_id}`} title="Trailer" allowFullScreen className="absolute inset-0 w-full h-full" />
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${youtubeId}`}
+                  title="Trailer"
+                  allowFullScreen
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  className="absolute inset-0 w-full h-full"
+                />
               </div>
             </div>
           )}

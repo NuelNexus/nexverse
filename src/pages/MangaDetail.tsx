@@ -1,41 +1,53 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, BookOpen, Bookmark, Globe } from "lucide-react";
+import { useParams, Link } from "react-router-dom";
+import { ArrowLeft, BookOpen, Bookmark, Globe, X } from "lucide-react";
 import { getMangaById, getMangaChapters, type MangaData, type ChapterData, mangaUtils } from "@/lib/mangadex";
 import { supabase } from "@/integrations/supabase/client";
 import CommentSection from "@/components/CommentSection";
 
 const MANGA_PROVIDERS = [
-  { id: "mangadex", name: "MangaDex", getReaderUrl: (mangaId: string, chapterId: string) => `/manga/${mangaId}/read/${chapterId}` },
-  { id: "mangafire", name: "MangaFire", getExternalUrl: (title: string) => `https://mangafire.to/manga/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` },
-  { id: "mangakakalot", name: "MangaKakalot", getExternalUrl: (title: string) => `https://mangakakalot.com/search/story/${encodeURIComponent(title)}` },
-  { id: "comick", name: "ComicK", getExternalUrl: (title: string) => `https://comick.io/search?q=${encodeURIComponent(title)}` },
+  {
+    id: "mangafire",
+    name: "MangaFire",
+    getEmbedUrl: (title: string) =>
+      `https://mangafire.to/manga/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")}`,
+  },
+  {
+    id: "comick",
+    name: "ComicK",
+    getEmbedUrl: (title: string) =>
+      `https://comick.io/search?q=${encodeURIComponent(title)}`,
+  },
+  {
+    id: "mangakakalot",
+    name: "MangaKakalot",
+    getEmbedUrl: (title: string) =>
+      `https://mangakakalot.com/search/story/${encodeURIComponent(title)}`,
+  },
+  {
+    id: "mangareader",
+    name: "MangaReader",
+    getEmbedUrl: (title: string) =>
+      `https://mangareader.to/search?keyword=${encodeURIComponent(title)}`,
+  },
 ];
 
 const MangaDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [manga, setManga] = useState<MangaData | null>(null);
-  const [chapters, setChapters] = useState<ChapterData[]>([]);
   const [loading, setLoading] = useState(true);
   const [continueChapterId, setContinueChapterId] = useState<string | null>(null);
   const [continueChapterNum, setContinueChapterNum] = useState<string | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState("mangadex");
+  const [selectedProvider, setSelectedProvider] = useState("mangafire");
+  const [showReader, setShowReader] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     window.scrollTo(0, 0);
     const load = async () => {
       try {
-        const [mangaRes, chapRes] = await Promise.all([
-          getMangaById(id),
-          getMangaChapters(id, 200),
-        ]);
+        const mangaRes = await getMangaById(id);
         setManga(mangaRes.data);
-        const readableChapters = (chapRes.data || []).filter(
-          (ch: any) => !ch.attributes.externalUrl
-        );
-        setChapters(readableChapters);
 
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -79,6 +91,9 @@ const MangaDetail = () => {
   const description = mangaUtils.getDescription(manga);
   const cover = mangaUtils.getCoverUrl(manga);
 
+  const currentProvider = MANGA_PROVIDERS.find((p) => p.id === selectedProvider)!;
+  const readerUrl = currentProvider.getEmbedUrl(title);
+
   return (
     <div className="min-h-screen pt-20 pb-12">
       <div className="container">
@@ -111,34 +126,25 @@ const MangaDetail = () => {
               {manga.attributes.year && <span>Year: <span className="text-foreground">{manga.attributes.year}</span></span>}
             </div>
 
-            <div className="flex gap-3 mt-5 flex-wrap">
-              {chapters.length > 0 && (
-                <Link
-                  to={`/manga/${id}/read/${chapters[0].id}`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
-                >
-                  <BookOpen className="w-4 h-4" /> Read Ch. 1
-                </Link>
-              )}
-              {continueChapterId && (
-                <Link
-                  to={`/manga/${id}/read/${continueChapterId}`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-semibold hover:bg-secondary/80 transition-colors"
-                >
-                  <Bookmark className="w-4 h-4" /> Continue Ch. {continueChapterNum || "?"}
-                </Link>
-              )}
-            </div>
+            <button
+              onClick={() => setShowReader(true)}
+              className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+            >
+              <BookOpen className="w-4 h-4" /> Read Now
+            </button>
           </div>
         </div>
 
         {/* Provider selector */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-sm text-muted-foreground">Read on:</span>
+          <span className="text-sm text-muted-foreground">Source:</span>
           {MANGA_PROVIDERS.map((p) => (
             <button
               key={p.id}
-              onClick={() => setSelectedProvider(p.id)}
+              onClick={() => {
+                setSelectedProvider(p.id);
+                if (showReader) setShowReader(true); // refresh iframe
+              }}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 selectedProvider === p.id
                   ? "bg-primary text-primary-foreground"
@@ -150,60 +156,57 @@ const MangaDetail = () => {
           ))}
         </div>
 
-        {/* External provider links */}
-        {selectedProvider !== "mangadex" && (
-          <div className="glass rounded-lg p-4 mb-6">
-            <p className="text-sm text-muted-foreground mb-3">
-              Read <span className="text-foreground font-medium">{title}</span> on {MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.name}:
+        {/* Embedded reader */}
+        {showReader && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-display font-semibold text-foreground">
+                Reading on {currentProvider.name}
+              </h2>
+              <button
+                onClick={() => setShowReader(false)}
+                className="p-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="rounded-lg overflow-hidden border border-border bg-secondary" style={{ height: "80vh" }}>
+              <iframe
+                src={readerUrl}
+                title={`Read ${title} on ${currentProvider.name}`}
+                className="w-full h-full"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              If the reader doesn't load, try a different source above or{" "}
+              <a href={readerUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                open in new tab
+              </a>.
             </p>
-            <a
-              href={MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.getExternalUrl?.(title)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-            >
-              <Globe className="w-4 h-4" /> Open in {MANGA_PROVIDERS.find(p => p.id === selectedProvider)?.name}
-            </a>
           </div>
         )}
 
-        {/* MangaDex chapters */}
-        {selectedProvider === "mangadex" && (
-          <>
-            <h2 className="text-xl font-display font-semibold text-foreground mb-4">Chapters ({chapters.length})</h2>
-            <div className="grid gap-2 mb-8">
-              {chapters.length === 0 ? (
-                <div className="glass rounded-lg p-6 text-center">
-                  <p className="text-muted-foreground text-sm mb-3">No readable English chapters on MangaDex.</p>
-                  <p className="text-xs text-muted-foreground">Try another provider above (MangaFire, MangaKakalot, or ComicK).</p>
-                </div>
-              ) : (
-                chapters.map((ch) => (
-                  <Link
-                    key={ch.id}
-                    to={`/manga/${id}/read/${ch.id}`}
-                    className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
-                      ch.id === continueChapterId
-                        ? "bg-primary/10 border border-primary/30"
-                        : "bg-secondary hover:bg-secondary/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <BookOpen className="w-4 h-4 text-primary" />
-                      <span className="text-sm text-foreground">
-                        Ch. {ch.attributes.chapter || "?"}
-                        {ch.attributes.title && ` - ${ch.attributes.title}`}
-                      </span>
-                      {ch.id === continueChapterId && (
-                        <span className="text-xs text-primary font-medium">← Continue</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground">{ch.attributes.pages} pages</span>
-                  </Link>
-                ))
-              )}
+        {/* Quick links to all providers */}
+        {!showReader && (
+          <div className="glass rounded-lg p-4 mb-6">
+            <p className="text-sm font-medium text-foreground mb-3">Read "{title}" on:</p>
+            <div className="flex flex-wrap gap-2">
+              {MANGA_PROVIDERS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setSelectedProvider(p.id);
+                    setShowReader(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-primary hover:text-primary-foreground transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" /> {p.name}
+                </button>
+              ))}
             </div>
-          </>
+          </div>
         )}
 
         <CommentSection contentType="manga" contentId={id!} />

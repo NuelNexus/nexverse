@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +15,6 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     if (action === "search") {
-      // AI anime search
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -54,7 +54,6 @@ serve(async (req) => {
     }
 
     if (action === "debate") {
-      // Generate a daily anime debate
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -94,7 +93,26 @@ Make it controversial and fun. Use well-known anime and characters that fans lov
       const match = text.match(/\{[\s\S]*\}/);
       const debate = match ? JSON.parse(match[0]) : null;
 
-      return new Response(JSON.stringify({ debate }), {
+      if (!debate) throw new Error("Failed to parse debate from AI");
+
+      // Insert into database using service role key (bypasses RLS)
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+      const { data: inserted, error: insertError } = await supabaseAdmin
+        .from("anime_debates")
+        .insert({
+          topic: debate.topic,
+          option_a: debate.option_a,
+          option_b: debate.option_b,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw new Error(`DB insert failed: ${insertError.message}`);
+
+      return new Response(JSON.stringify({ debate: inserted }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
