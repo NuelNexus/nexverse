@@ -31,16 +31,16 @@ export interface ChapterData {
 function getCoverUrl(manga: MangaData): string {
   const cover = manga.relationships.find((r) => r.type === "cover_art");
   if (cover?.attributes?.fileName) {
-    return `https://uploads.mangadex.org/covers/${manga.id}/${cover.attributes.fileName}.256.jpg`;
+    // Proxy cover images through our edge function to avoid CORS
+    const originalUrl = `https://uploads.mangadex.org/covers/${manga.id}/${cover.attributes.fileName}.256.jpg`;
+    return `${PROXY_BASE}?image=${encodeURIComponent(originalUrl)}`;
   }
   return "/placeholder.svg";
 }
 
 function getTitle(manga: MangaData): string {
   const t = manga.attributes.title;
-  // Prefer English title
   if (t.en) return t.en;
-  // Check alt titles for English
   if (manga.attributes.altTitles) {
     for (const alt of manga.attributes.altTitles) {
       if (alt.en) return alt.en;
@@ -107,10 +107,19 @@ export async function getMangaChapters(id: string, limit = 50, offset = 0) {
   });
 }
 
-export async function getChapterPages(chapterId: string) {
+export async function getChapterPages(chapterId: string): Promise<string[]> {
   const data = await proxyFetch(`/at-home/server/${chapterId}`);
   const baseUrl = data.baseUrl;
-  const hash = data.chapter.hash;
-  const pages = data.chapter.data as string[];
-  return pages.map((p: string) => `${baseUrl}/data/${hash}/${p}`);
+  const hash = data.chapter?.hash;
+  const pages = (data.chapter?.data || []) as string[];
+  
+  if (!baseUrl || !hash || pages.length === 0) {
+    return [];
+  }
+  
+  // Proxy each page image through our edge function to avoid CORS/hotlink issues
+  return pages.map((p: string) => {
+    const originalUrl = `${baseUrl}/data/${hash}/${p}`;
+    return `${PROXY_BASE}?image=${encodeURIComponent(originalUrl)}`;
+  });
 }

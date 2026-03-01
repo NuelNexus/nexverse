@@ -13,6 +13,29 @@ serve(async (req) => {
   try {
     const url = new URL(req.url);
     const path = url.searchParams.get("path");
+    const imageUrl = url.searchParams.get("image");
+
+    // Image proxy mode – stream an image from MangaDex CDN
+    if (imageUrl) {
+      const res = await fetch(imageUrl, {
+        headers: { "User-Agent": "NexusVerse/1.0", "Referer": "https://mangadex.org/" },
+      });
+      if (!res.ok) {
+        return new Response("Image fetch failed", { status: res.status, headers: corsHeaders });
+      }
+      const contentType = res.headers.get("content-type") || "image/jpeg";
+      const body = await res.arrayBuffer();
+      return new Response(body, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400",
+        },
+      });
+    }
+
+    // API proxy mode
     if (!path) {
       return new Response(JSON.stringify({ error: "Missing path param" }), {
         status: 400,
@@ -20,10 +43,9 @@ serve(async (req) => {
       });
     }
 
-    // Build MangaDex URL preserving array params like includes[], contentRating[], etc.
     const mdUrl = new URL(`https://api.mangadex.org${path}`);
     url.searchParams.forEach((v, k) => {
-      if (k !== "path") {
+      if (k !== "path" && k !== "image") {
         mdUrl.searchParams.append(k, v);
       }
     });
