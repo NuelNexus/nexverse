@@ -224,15 +224,7 @@ const AnimeDebates = () => {
         ) : !debate ? (
           <div className="text-center py-20">
             <Flame className="w-12 h-12 text-primary mx-auto mb-4 opacity-50" />
-            <p className="text-muted-foreground mb-4">No debates yet. Generate the first one!</p>
-            <button
-              onClick={generateDebate}
-              disabled={generating}
-              className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2 mx-auto"
-            >
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
-              Generate Debate
-            </button>
+            <p className="text-muted-foreground mb-4">New debates are generated automatically every day. Check back soon!</p>
           </div>
         ) : (
           <AnimatePresence mode="wait">
@@ -386,17 +378,6 @@ const AnimeDebates = () => {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={generateDebate}
-                  disabled={generating}
-                  className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-                >
-                  {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
-                  New Debate
-                </button>
-              </div>
             </motion.div>
           </AnimatePresence>
         )}
