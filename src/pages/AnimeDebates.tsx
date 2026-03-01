@@ -185,6 +185,14 @@ const AnimeDebates = () => {
             >
               <Share2 className="w-5 h-5" />
             </button>
+            <button
+              onClick={generateDebate}
+              disabled={generating}
+              className="p-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              title="Generate New Debate"
+            >
+              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Swords className="w-5 h-5" />}
+            </button>
           </div>
         </div>
 
