@@ -40,52 +40,90 @@ serve(async (req) => {
 
     // ComicK search – find manga by title and return its hid
     if (comickSearch) {
-      const res = await fetch(`https://api.comick.io/v1.0/search?q=${encodeURIComponent(comickSearch)}&limit=5&tachiyomi=true`);
-      if (!res.ok) throw new Error("ComicK search failed");
-      const results = await res.json();
-      // Find best match
-      const match = results?.[0];
-      if (!match) {
+      // Try multiple ComicK API domains as they change frequently
+      const comickDomains = ["https://api.comick.fun", "https://api.comick.io"];
+      let searchResult = null;
+      for (const domain of comickDomains) {
+        try {
+          const res = await fetch(`${domain}/v1.0/search?q=${encodeURIComponent(comickSearch)}&limit=5&tachiyomi=true`, {
+            headers: { "User-Agent": "NexusVerse/1.0" },
+          });
+          if (res.ok) {
+            const results = await res.json();
+            if (results?.length) {
+              searchResult = results[0];
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`ComicK domain ${domain} failed:`, e.message);
+        }
+      }
+      if (!searchResult) {
         return new Response(JSON.stringify({ hid: null }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ hid: match.hid, slug: match.slug, title: match.title || match.slug }), {
+      return new Response(JSON.stringify({ hid: searchResult.hid, slug: searchResult.slug, title: searchResult.title || searchResult.slug }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // ComicK chapters – get English chapters for a manga
     if (comickChapters) {
-      const res = await fetch(`https://api.comick.io/comic/${comickChapters}/chapters?lang=en&limit=200&chap-order=1`);
-      if (!res.ok) throw new Error("ComicK chapters failed");
-      const data = await res.json();
-      const chapters = (data.chapters || []).map((ch: any) => ({
-        id: `comick-${ch.hid}`,
-        _source: "comick",
-        _comickHid: ch.hid,
-        attributes: {
-          title: ch.title || null,
-          chapter: ch.chap || null,
-          volume: ch.vol || null,
-          pages: 0,
-          translatedLanguage: "en",
-          publishAt: ch.created_at || ch.updated_at || new Date().toISOString(),
-          externalUrl: null,
-        },
-      }));
-      return new Response(JSON.stringify({ chapters }), {
+      const comickDomains = ["https://api.comick.fun", "https://api.comick.io"];
+      for (const domain of comickDomains) {
+        try {
+          const res = await fetch(`${domain}/comic/${comickChapters}/chapters?lang=en&limit=200&chap-order=1`, {
+            headers: { "User-Agent": "NexusVerse/1.0" },
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+          const chapters = (data.chapters || []).map((ch: any) => ({
+            id: `comick-${ch.hid}`,
+            _source: "comick",
+            _comickHid: ch.hid,
+            attributes: {
+              title: ch.title || null,
+              chapter: ch.chap || null,
+              volume: ch.vol || null,
+              pages: 0,
+              translatedLanguage: "en",
+              publishAt: ch.created_at || ch.updated_at || new Date().toISOString(),
+              externalUrl: null,
+            },
+          }));
+          return new Response(JSON.stringify({ chapters }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          console.warn(`ComicK chapters from ${domain} failed:`, e.message);
+        }
+      }
+      return new Response(JSON.stringify({ chapters: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // ComicK chapter pages
     if (comickPages) {
-      const res = await fetch(`https://api.comick.io/chapter/${comickPages}?tachiyomi=true`);
-      if (!res.ok) throw new Error("ComicK pages failed");
-      const data = await res.json();
-      const pages = (data.chapter?.images || data.chapter?.md_images || []).map((img: any) => img.url || `https://meo.comick.pictures/${img.b2key}`);
-      return new Response(JSON.stringify({ pages }), {
+      const comickDomains = ["https://api.comick.fun", "https://api.comick.io"];
+      for (const domain of comickDomains) {
+        try {
+          const res = await fetch(`${domain}/chapter/${comickPages}?tachiyomi=true`, {
+            headers: { "User-Agent": "NexusVerse/1.0" },
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+          const pages = (data.chapter?.images || data.chapter?.md_images || []).map((img: any) => img.url || `https://meo.comick.pictures/${img.b2key}`);
+          return new Response(JSON.stringify({ pages }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          console.warn(`ComicK pages from ${domain} failed:`, e.message);
+        }
+      }
+      return new Response(JSON.stringify({ pages: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
