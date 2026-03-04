@@ -9,6 +9,7 @@ const MangaDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [manga, setManga] = useState<MangaData | null>(null);
   const [chapters, setChapters] = useState<ChapterData[]>([]);
+  const [chapterSource, setChapterSource] = useState("mangadex");
   const [loading, setLoading] = useState(true);
   const [chaptersLoading, setChaptersLoading] = useState(true);
   const [continueChapterId, setContinueChapterId] = useState<string | null>(null);
@@ -43,12 +44,12 @@ const MangaDetail = () => {
     };
     load();
 
-    // Load chapters
+    // Load chapters with multi-source fallback
     setChaptersLoading(true);
     getMangaChapters(id, 200)
       .then((res) => {
-        const chs = (res.data || []).filter((c: ChapterData) => !c.attributes.externalUrl);
-        setChapters(chs);
+        setChapters(res.data);
+        setChapterSource(res.source);
       })
       .catch(console.error)
       .finally(() => setChaptersLoading(false));
@@ -108,7 +109,7 @@ const MangaDetail = () => {
 
             {continueChapterId && (
               <Link
-                to={`/manga/${id}/read/${continueChapterId}`}
+                to={`/manga/${id}/read/${continueChapterId}${chapterSource === "comick" ? "?source=comick" : ""}`}
                 className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
               >
                 <BookOpen className="w-4 h-4" /> Continue Ch. {continueChapterNum || "?"}
@@ -121,6 +122,9 @@ const MangaDetail = () => {
         <div className="mb-8">
           <h2 className="text-xl font-display font-bold text-foreground mb-4">
             Chapters ({chapters.length})
+            {chapterSource === "comick" && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded">via ComicK</span>
+            )}
           </h2>
           {chaptersLoading ? (
             <div className="space-y-2">
@@ -129,35 +133,41 @@ const MangaDetail = () => {
               ))}
             </div>
           ) : chapters.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No English chapters available.</p>
+            <p className="text-sm text-muted-foreground">No English chapters available from any source.</p>
           ) : (
             <div className="space-y-1 max-h-[60vh] overflow-y-auto rounded-lg border border-border">
-              {chapters.map((ch) => (
-                <Link
-                  key={ch.id}
-                  to={`/manga/${id}/read/${ch.id}`}
-                  className={`flex items-center justify-between px-4 py-3 hover:bg-primary/10 transition-colors ${
-                    ch.id === continueChapterId ? "bg-primary/15 border-l-2 border-primary" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <BookOpen className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <div>
-                      <span className="text-sm font-medium text-foreground">
-                        Ch. {ch.attributes.chapter || "?"}
-                      </span>
-                      {ch.attributes.title && (
-                        <span className="text-sm text-muted-foreground ml-2">
-                          — {ch.attributes.title}
+              {chapters.map((ch) => {
+                const isComick = ch._source === "comick";
+                const linkTo = isComick
+                  ? `/manga/${id}/read/${ch.id}?source=comick&hid=${ch._comickHid}`
+                  : `/manga/${id}/read/${ch.id}`;
+                return (
+                  <Link
+                    key={ch.id}
+                    to={linkTo}
+                    className={`flex items-center justify-between px-4 py-3 hover:bg-primary/10 transition-colors ${
+                      ch.id === continueChapterId ? "bg-primary/15 border-l-2 border-primary" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <BookOpen className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <span className="text-sm font-medium text-foreground">
+                          Ch. {ch.attributes.chapter || "?"}
                         </span>
-                      )}
+                        {ch.attributes.title && (
+                          <span className="text-sm text-muted-foreground ml-2">
+                            — {ch.attributes.title}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {new Date(ch.attributes.publishAt).toLocaleDateString()}
-                  </span>
-                </Link>
-              ))}
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {new Date(ch.attributes.publishAt).toLocaleDateString()}
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
