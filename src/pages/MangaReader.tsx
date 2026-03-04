@@ -1,17 +1,21 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronUp, Bookmark, Loader2 } from "lucide-react";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft, ChevronUp, Loader2 } from "lucide-react";
 import { getChapterPages, getMangaById, getMangaChapters, mangaUtils, type MangaData, type ChapterData } from "@/lib/mangadex";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const MangaReader = () => {
   const { mangaId, chapterId } = useParams<{ mangaId: string; chapterId: string }>();
+  const [searchParams] = useSearchParams();
+  const source = searchParams.get("source") || "mangadex";
+  const comickHid = searchParams.get("hid") || undefined;
   const navigate = useNavigate();
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [manga, setManga] = useState<MangaData | null>(null);
   const [chapters, setChapters] = useState<ChapterData[]>([]);
+  const [chapterSource, setChapterSource] = useState(source);
   const [currentChapter, setCurrentChapter] = useState<ChapterData | null>(null);
   const [showTopBtn, setShowTopBtn] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
@@ -20,8 +24,8 @@ const MangaReader = () => {
     if (!mangaId) return;
     getMangaById(mangaId).then((res) => setManga(res.data)).catch(console.error);
     getMangaChapters(mangaId, 200).then((res) => {
-      const chs = (res.data || []).filter((c: ChapterData) => !c.attributes.externalUrl);
-      setChapters(chs);
+      setChapters(res.data);
+      setChapterSource(res.source);
     }).catch(console.error);
   }, [mangaId]);
 
@@ -30,11 +34,17 @@ const MangaReader = () => {
     setLoading(true);
     setPages([]);
     topRef.current?.scrollIntoView();
-    getChapterPages(chapterId)
+
+    // Determine source from the chapter or URL params
+    const ch = chapters.find((c) => c.id === chapterId);
+    const useSource = ch?._source || source;
+    const useHid = ch?._comickHid || comickHid;
+
+    getChapterPages(chapterId, useSource, useHid)
       .then(setPages)
       .catch(() => toast.error("Failed to load chapter pages"))
       .finally(() => setLoading(false));
-  }, [chapterId]);
+  }, [chapterId, chapters, source, comickHid]);
 
   useEffect(() => {
     if (chapters.length && chapterId) {
@@ -63,7 +73,6 @@ const MangaReader = () => {
     save();
   }, [manga, chapterId, currentChapter]);
 
-  // Scroll listener for back-to-top button
   useEffect(() => {
     const handleScroll = () => setShowTopBtn(window.scrollY > 600);
     window.addEventListener("scroll", handleScroll);
@@ -79,9 +88,13 @@ const MangaReader = () => {
     ? `Ch. ${currentChapter.attributes.chapter}`
     : "Chapter";
 
+  const buildChapterUrl = (ch: ChapterData) => {
+    const isComick = ch._source === "comick";
+    return `/manga/${mangaId}/read/${ch.id}${isComick ? `?source=comick&hid=${ch._comickHid}` : ""}`;
+  };
+
   return (
     <div className="min-h-screen bg-background" ref={topRef}>
-      {/* Sticky header */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border">
         <div className="container max-w-3xl flex items-center justify-between h-14">
           <Link
@@ -93,7 +106,10 @@ const MangaReader = () => {
           <span className="text-sm font-medium text-foreground">{chapterLabel}</span>
           <select
             value={chapterId}
-            onChange={(e) => navigate(`/manga/${mangaId}/read/${e.target.value}`)}
+            onChange={(e) => {
+              const ch = chapters.find(c => c.id === e.target.value);
+              if (ch) navigate(buildChapterUrl(ch));
+            }}
             className="h-8 px-2 rounded-md bg-secondary text-foreground text-xs border-none focus:outline-none"
           >
             {chapters.map((ch) => (
@@ -105,7 +121,6 @@ const MangaReader = () => {
         </div>
       </div>
 
-      {/* Pages - vertical scroll */}
       <div className="pt-14 pb-20">
         {loading ? (
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -124,17 +139,23 @@ const MangaReader = () => {
                 alt={`Page ${i + 1}`}
                 className="w-full max-w-[800px] select-none"
                 loading={i < 3 ? "eager" : "lazy"}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (!img.dataset.retried) {
+                    img.dataset.retried = "1";
+                    img.src = src; // retry once
+                  }
+                }}
               />
             ))}
           </div>
         )}
 
-        {/* Navigation between chapters */}
         {!loading && (
           <div className="max-w-3xl mx-auto flex items-center justify-between px-4 mt-8 gap-4">
             {prevChapter ? (
               <Link
-                to={`/manga/${mangaId}/read/${prevChapter.id}`}
+                to={buildChapterUrl(prevChapter)}
                 className="flex-1 py-3 text-center rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
               >
                 ← Previous Chapter
@@ -142,7 +163,7 @@ const MangaReader = () => {
             ) : <div className="flex-1" />}
             {nextChapter ? (
               <Link
-                to={`/manga/${mangaId}/read/${nextChapter.id}`}
+                to={buildChapterUrl(nextChapter)}
                 className="flex-1 py-3 text-center rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 Next Chapter →
@@ -152,7 +173,6 @@ const MangaReader = () => {
         )}
       </div>
 
-      {/* Back to top */}
       {showTopBtn && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}

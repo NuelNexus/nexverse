@@ -14,8 +14,11 @@ serve(async (req) => {
     const url = new URL(req.url);
     const path = url.searchParams.get("path");
     const imageUrl = url.searchParams.get("image");
+    const comickSearch = url.searchParams.get("comick_search");
+    const comickChapters = url.searchParams.get("comick_chapters");
+    const comickPages = url.searchParams.get("comick_pages");
 
-    // Image proxy mode – stream an image from MangaDex CDN
+    // Image proxy mode
     if (imageUrl) {
       const res = await fetch(imageUrl, {
         headers: { "User-Agent": "NexusVerse/1.0", "Referer": "https://mangadex.org/" },
@@ -35,7 +38,59 @@ serve(async (req) => {
       });
     }
 
-    // API proxy mode
+    // ComicK search – find manga by title and return its hid
+    if (comickSearch) {
+      const res = await fetch(`https://api.comick.io/v1.0/search?q=${encodeURIComponent(comickSearch)}&limit=5&tachiyomi=true`);
+      if (!res.ok) throw new Error("ComicK search failed");
+      const results = await res.json();
+      // Find best match
+      const match = results?.[0];
+      if (!match) {
+        return new Response(JSON.stringify({ hid: null }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ hid: match.hid, slug: match.slug, title: match.title || match.slug }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ComicK chapters – get English chapters for a manga
+    if (comickChapters) {
+      const res = await fetch(`https://api.comick.io/comic/${comickChapters}/chapters?lang=en&limit=200&chap-order=1`);
+      if (!res.ok) throw new Error("ComicK chapters failed");
+      const data = await res.json();
+      const chapters = (data.chapters || []).map((ch: any) => ({
+        id: `comick-${ch.hid}`,
+        _source: "comick",
+        _comickHid: ch.hid,
+        attributes: {
+          title: ch.title || null,
+          chapter: ch.chap || null,
+          volume: ch.vol || null,
+          pages: 0,
+          translatedLanguage: "en",
+          publishAt: ch.created_at || ch.updated_at || new Date().toISOString(),
+          externalUrl: null,
+        },
+      }));
+      return new Response(JSON.stringify({ chapters }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ComicK chapter pages
+    if (comickPages) {
+      const res = await fetch(`https://api.comick.io/chapter/${comickPages}?tachiyomi=true`);
+      if (!res.ok) throw new Error("ComicK pages failed");
+      const data = await res.json();
+      const pages = (data.chapter?.images || data.chapter?.md_images || []).map((img: any) => img.url || `https://meo.comick.pictures/${img.b2key}`);
+      return new Response(JSON.stringify({ pages }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // MangaDex API proxy mode
     if (!path) {
       return new Response(JSON.stringify({ error: "Missing path param" }), {
         status: 400,

@@ -26,12 +26,14 @@ export interface ChapterData {
     publishAt: string;
     externalUrl: string | null;
   };
+  // Track which source this chapter came from
+  _source?: "mangadex" | "comick";
+  _comickHid?: string;
 }
 
 function getCoverUrl(manga: MangaData): string {
   const cover = manga.relationships.find((r) => r.type === "cover_art");
   if (cover?.attributes?.fileName) {
-    // Proxy cover images through our edge function to avoid CORS
     const originalUrl = `https://uploads.mangadex.org/covers/${manga.id}/${cover.attributes.fileName}.256.jpg`;
     return `${PROXY_BASE}?image=${encodeURIComponent(originalUrl)}`;
   }
@@ -97,17 +99,62 @@ export async function getMangaById(id: string) {
   return proxyFetch(`/manga/${id}`, { "includes[]": ["cover_art", "author"] });
 }
 
-export async function getMangaChapters(id: string, limit = 50, offset = 0) {
-  return proxyFetch(`/manga/${id}/feed`, {
-    limit: String(limit),
-    offset: String(offset),
-    "translatedLanguage[]": "en",
-    "order[chapter]": "asc",
-    "includes[]": "scanlation_group",
-  });
+export async function getMangaChapters(id: string, limit = 50, offset = 0): Promise<{ data: ChapterData[]; source: string }> {
+  // Try MangaDex first
+  try {
+    const res = await proxyFetch(`/manga/${id}/feed`, {
+      limit: String(limit),
+      offset: String(offset),
+      "translatedLanguage[]": "en",
+      "order[chapter]": "asc",
+      "includes[]": "scanlation_group",
+    });
+    const chs = (res.data || []).filter((c: ChapterData) => !c.attributes.externalUrl);
+    if (chs.length > 0) {
+      chs.forEach((c: ChapterData) => { c._source = "mangadex"; });
+      return { data: chs, source: "mangadex" };
+    }
+  } catch (e) {
+    console.warn("MangaDex chapters failed:", e);
+  }
+
+  // Fallback: fetch from ComicK API via proxy
+  try {
+    const mangaRes = await proxyFetch(`/manga/${id}`, { "includes[]": ["cover_art", "author"] });
+    const title = getTitle(mangaRes.data);
+    const comickChapters = await fetchComickChapters(title);
+    if (comickChapters.length > 0) {
+      return { data: comickChapters, source: "comick" };
+    }
+  } catch (e) {
+    console.warn("ComicK fallback failed:", e);
+  }
+
+  return { data: [], source: "none" };
 }
 
-export async function getChapterPages(chapterId: string): Promise<string[]> {
+// ComicK fallback source
+async function fetchComickChapters(title: string): Promise<ChapterData[]> {
+  const proxyUrl = new URL(PROXY_BASE);
+  proxyUrl.searchParams.set("comick_search", title);
+  const searchRes = await fetch(proxyUrl.toString());
+  if (!searchRes.ok) return [];
+  const searchData = await searchRes.json();
+  if (!searchData.hid) return [];
+
+  const chapUrl = new URL(PROXY_BASE);
+  chapUrl.searchParams.set("comick_chapters", searchData.hid);
+  const chapRes = await fetch(chapUrl.toString());
+  if (!chapRes.ok) return [];
+  const chapData = await chapRes.json();
+  return chapData.chapters || [];
+}
+
+export async function getChapterPages(chapterId: string, source?: string, comickHid?: string): Promise<string[]> {
+  if (source === "comick" && comickHid) {
+    return getComickChapterPages(comickHid);
+  }
+  // Default MangaDex
   const data = await proxyFetch(`/at-home/server/${chapterId}`);
   const baseUrl = data.baseUrl;
   const hash = data.chapter?.hash;
@@ -117,9 +164,17 @@ export async function getChapterPages(chapterId: string): Promise<string[]> {
     return [];
   }
   
-  // Proxy each page image through our edge function to avoid CORS/hotlink issues
   return pages.map((p: string) => {
     const originalUrl = `${baseUrl}/data/${hash}/${p}`;
     return `${PROXY_BASE}?image=${encodeURIComponent(originalUrl)}`;
   });
+}
+
+async function getComickChapterPages(comickHid: string): Promise<string[]> {
+  const url = new URL(PROXY_BASE);
+  url.searchParams.set("comick_pages", comickHid);
+  const res = await fetch(url.toString());
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.pages || [];
 }
