@@ -150,20 +150,6 @@ export async function getMangaChapters(id: string, limit = 50, offset = 0): Prom
   return { data: [], source: "none" };
 }
 
-  // Fallback: fetch from ComicK API via proxy
-  try {
-    const mangaRes = await proxyFetch(`/manga/${id}`, { "includes[]": ["cover_art", "author"] });
-    const title = getTitle(mangaRes.data);
-    const comickChapters = await fetchComickChapters(title);
-    if (comickChapters.length > 0) {
-      return { data: comickChapters, source: "comick" };
-    }
-  } catch (e) {
-    console.warn("ComicK fallback failed:", e);
-  }
-
-  return { data: [], source: "none" };
-}
 
 // ComicK fallback source
 async function fetchComickChapters(title: string): Promise<ChapterData[]> {
