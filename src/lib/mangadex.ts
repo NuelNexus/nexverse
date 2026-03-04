@@ -100,7 +100,7 @@ export async function getMangaById(id: string) {
 }
 
 export async function getMangaChapters(id: string, limit = 50, offset = 0): Promise<{ data: ChapterData[]; source: string }> {
-  // Try MangaDex first
+  // Try MangaDex English first
   try {
     const res = await proxyFetch(`/manga/${id}/feed`, {
       limit: String(limit),
@@ -115,10 +115,10 @@ export async function getMangaChapters(id: string, limit = 50, offset = 0): Prom
       return { data: chs, source: "mangadex" };
     }
   } catch (e) {
-    console.warn("MangaDex chapters failed:", e);
+    console.warn("MangaDex EN chapters failed:", e);
   }
 
-  // Fallback: fetch from ComicK API via proxy
+  // Fallback: ComicK
   try {
     const mangaRes = await proxyFetch(`/manga/${id}`, { "includes[]": ["cover_art", "author"] });
     const title = getTitle(mangaRes.data);
@@ -130,8 +130,26 @@ export async function getMangaChapters(id: string, limit = 50, offset = 0): Prom
     console.warn("ComicK fallback failed:", e);
   }
 
+  // Final fallback: MangaDex any language
+  try {
+    const res = await proxyFetch(`/manga/${id}/feed`, {
+      limit: String(limit),
+      offset: String(offset),
+      "order[chapter]": "asc",
+      "includes[]": "scanlation_group",
+    });
+    const chs = (res.data || []).filter((c: ChapterData) => !c.attributes.externalUrl);
+    if (chs.length > 0) {
+      chs.forEach((c: ChapterData) => { c._source = "mangadex"; });
+      return { data: chs, source: "mangadex-all" };
+    }
+  } catch (e) {
+    console.warn("MangaDex all-lang chapters failed:", e);
+  }
+
   return { data: [], source: "none" };
 }
+
 
 // ComicK fallback source
 async function fetchComickChapters(title: string): Promise<ChapterData[]> {

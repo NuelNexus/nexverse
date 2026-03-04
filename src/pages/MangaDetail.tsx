@@ -125,6 +125,9 @@ const MangaDetail = () => {
             {chapterSource === "comick" && (
               <span className="ml-2 text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded">via ComicK</span>
             )}
+            {chapterSource === "mangadex-all" && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground bg-secondary px-2 py-0.5 rounded">All Languages</span>
+            )}
           </h2>
           {chaptersLoading ? (
             <div className="space-y-2">
