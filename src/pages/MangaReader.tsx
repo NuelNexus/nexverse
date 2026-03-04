@@ -1,9 +1,17 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronUp, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronUp, Loader2, Languages, X, ChevronDown } from "lucide-react";
 import { getChapterPages, getMangaById, getMangaChapters, mangaUtils, type MangaData, type ChapterData } from "@/lib/mangadex";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+const TRANSLATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate-manga`;
+
+const LANGUAGES = [
+  "English", "Spanish", "French", "German", "Portuguese",
+  "Italian", "Russian", "Chinese", "Arabic", "Hindi",
+  "Korean", "Japanese", "Turkish", "Indonesian", "Thai",
+];
 
 const MangaReader = () => {
   const { mangaId, chapterId } = useParams<{ mangaId: string; chapterId: string }>();
@@ -20,6 +28,13 @@ const MangaReader = () => {
   const [showTopBtn, setShowTopBtn] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
 
+  // Translation state
+  const [translateMode, setTranslateMode] = useState(false);
+  const [targetLang, setTargetLang] = useState("English");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [translations, setTranslations] = useState<Record<number, string>>({});
+  const [translating, setTranslating] = useState<Record<number, boolean>>({});
+
   useEffect(() => {
     if (!mangaId) return;
     getMangaById(mangaId).then((res) => setManga(res.data)).catch(console.error);
@@ -33,9 +48,10 @@ const MangaReader = () => {
     if (!chapterId) return;
     setLoading(true);
     setPages([]);
+    setTranslations({});
+    setTranslating({});
     topRef.current?.scrollIntoView();
 
-    // Determine source from the chapter or URL params
     const ch = chapters.find((c) => c.id === chapterId);
     const useSource = ch?._source || source;
     const useHid = ch?._comickHid || comickHid;
@@ -79,6 +95,31 @@ const MangaReader = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const translatePage = useCallback(async (pageIndex: number) => {
+    if (translations[pageIndex] || translating[pageIndex]) return;
+    setTranslating((prev) => ({ ...prev, [pageIndex]: true }));
+    try {
+      const res = await fetch(TRANSLATE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ imageUrl: pages[pageIndex], targetLang }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Translation failed");
+      }
+      const data = await res.json();
+      setTranslations((prev) => ({ ...prev, [pageIndex]: data.translation }));
+    } catch (e: any) {
+      toast.error(e.message || "Translation failed");
+    } finally {
+      setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
+    }
+  }, [pages, targetLang, translations, translating]);
+
   const currentIdx = chapters.findIndex((c) => c.id === chapterId);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
@@ -95,32 +136,87 @@ const MangaReader = () => {
 
   return (
     <div className="min-h-screen bg-background" ref={topRef}>
+      {/* Sticky header */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border">
-        <div className="container max-w-3xl flex items-center justify-between h-14">
+        <div className="container max-w-3xl flex items-center justify-between h-14 gap-2">
           <Link
             to={`/manga/${mangaId}`}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground flex-shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" /> {title}
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">{title}</span>
           </Link>
-          <span className="text-sm font-medium text-foreground">{chapterLabel}</span>
-          <select
-            value={chapterId}
-            onChange={(e) => {
-              const ch = chapters.find(c => c.id === e.target.value);
-              if (ch) navigate(buildChapterUrl(ch));
-            }}
-            className="h-8 px-2 rounded-md bg-secondary text-foreground text-xs border-none focus:outline-none"
-          >
-            {chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>
-                Ch. {ch.attributes.chapter || "?"} {ch.attributes.title ? `- ${ch.attributes.title}` : ""}
-              </option>
-            ))}
-          </select>
+          <span className="text-sm font-medium text-foreground flex-shrink-0">{chapterLabel}</span>
+          <div className="flex items-center gap-2">
+            {/* Translate toggle */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  if (!translateMode) {
+                    setTranslateMode(true);
+                    setShowLangPicker(true);
+                  } else {
+                    setTranslateMode(false);
+                    setShowLangPicker(false);
+                    setTranslations({});
+                  }
+                }}
+                className={`flex items-center gap-1 h-8 px-2 rounded-md text-xs font-medium transition-colors ${
+                  translateMode
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                }`}
+                title="Toggle translation"
+              >
+                <Languages className="w-4 h-4" />
+                <span className="hidden sm:inline">{translateMode ? targetLang : "Translate"}</span>
+              </button>
+
+              {/* Language picker dropdown */}
+              {showLangPicker && (
+                <div className="absolute right-0 top-full mt-1 w-44 bg-popover border border-border rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                  <div className="p-1">
+                    {LANGUAGES.map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => {
+                          setTargetLang(lang);
+                          setShowLangPicker(false);
+                          setTranslations({});
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                          targetLang === lang
+                            ? "bg-primary/15 text-primary font-medium"
+                            : "text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <select
+              value={chapterId}
+              onChange={(e) => {
+                const ch = chapters.find(c => c.id === e.target.value);
+                if (ch) navigate(buildChapterUrl(ch));
+              }}
+              className="h-8 px-2 rounded-md bg-secondary text-foreground text-xs border-none focus:outline-none max-w-[120px]"
+            >
+              {chapters.map((ch) => (
+                <option key={ch.id} value={ch.id}>
+                  Ch. {ch.attributes.chapter || "?"} {ch.attributes.title ? `- ${ch.attributes.title}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
+      {/* Pages */}
       <div className="pt-14 pb-20">
         {loading ? (
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -133,24 +229,75 @@ const MangaReader = () => {
         ) : (
           <div className="max-w-3xl mx-auto flex flex-col items-center">
             {pages.map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt={`Page ${i + 1}`}
-                className="w-full max-w-[800px] select-none"
-                loading={i < 3 ? "eager" : "lazy"}
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  if (!img.dataset.retried) {
-                    img.dataset.retried = "1";
-                    img.src = src; // retry once
-                  }
-                }}
-              />
+              <div key={i} className="w-full relative group">
+                <img
+                  src={src}
+                  alt={`Page ${i + 1}`}
+                  className="w-full max-w-[800px] mx-auto select-none"
+                  loading={i < 3 ? "eager" : "lazy"}
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    if (!img.dataset.retried) {
+                      img.dataset.retried = "1";
+                      img.src = src;
+                    }
+                  }}
+                />
+
+                {/* Translation overlay */}
+                {translateMode && (
+                  <div className="w-full max-w-[800px] mx-auto">
+                    {translations[i] ? (
+                      <div className="mx-2 mb-4 p-4 rounded-lg bg-popover/95 backdrop-blur border border-border shadow-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-primary">
+                            <Languages className="w-3 h-3 inline mr-1" />
+                            Page {i + 1} — {targetLang}
+                          </span>
+                          <button
+                            onClick={() => setTranslations((prev) => {
+                              const next = { ...prev };
+                              delete next[i];
+                              return next;
+                            })}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                          {translations[i]}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-center mb-4">
+                        <button
+                          onClick={() => translatePage(i)}
+                          disabled={translating[i]}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          {translating[i] ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Translating page {i + 1}...
+                            </>
+                          ) : (
+                            <>
+                              <Languages className="w-4 h-4" />
+                              Translate page {i + 1}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
 
+        {/* Chapter navigation */}
         {!loading && (
           <div className="max-w-3xl mx-auto flex items-center justify-between px-4 mt-8 gap-4">
             {prevChapter ? (
@@ -173,6 +320,7 @@ const MangaReader = () => {
         )}
       </div>
 
+      {/* Back to top */}
       {showTopBtn && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
