@@ -6,22 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-async function searchAnimeImage(query: string): Promise<string | null> {
+async function searchAnimeImage(query: string, animeTitle?: string): Promise<string | null> {
   try {
-    // Search Jikan for the anime/character
-    const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=1`);
+    // Try character search FIRST (debates usually feature character names)
+    const charRes = await fetch(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(query)}&limit=3`);
+    if (charRes.ok) {
+      const charData = await charRes.json();
+      // If we have an anime title hint, try to find the character from that anime
+      if (charData.data?.length) {
+        const img = charData.data[0]?.images?.jpg?.image_url;
+        if (img) return img;
+      }
+    }
+    await new Promise(r => setTimeout(r, 350));
+    // Fallback: search as anime title (use animeTitle hint if provided)
+    const searchTerm = animeTitle || query;
+    const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTerm)}&limit=1`);
     if (res.ok) {
       const data = await res.json();
       if (data.data?.[0]?.images?.jpg?.large_image_url) {
         return data.data[0].images.jpg.large_image_url;
-      }
-    }
-    // Fallback: try character search
-    const charRes = await fetch(`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(query)}&limit=1`);
-    if (charRes.ok) {
-      const charData = await charRes.json();
-      if (charData.data?.[0]?.images?.jpg?.image_url) {
-        return charData.data[0].images.jpg.image_url;
       }
     }
   } catch (e) {
@@ -93,9 +97,11 @@ serve(async (req) => {
 {
   "topic": "The debate question",
   "option_a": "First option (character/anime/etc)",
-  "option_b": "Second option (character/anime/etc)"
+  "option_b": "Second option (character/anime/etc)",
+  "option_a_anime": "The anime series option_a is from",
+  "option_b_anime": "The anime series option_b is from"
 }
-Make it controversial and fun. Use well-known anime and characters that fans love to argue about. For option_a and option_b, use the most recognizable name (e.g. "Goku", "Naruto", "One Piece", "Attack on Titan").`
+Make it controversial and fun. Use well-known anime and characters that fans love to argue about. For option_a and option_b, use the most recognizable name (e.g. "Goku", "Naruto", "Luffy", "Levi"). For option_a_anime and option_b_anime use the full anime title (e.g. "Dragon Ball Z", "Naruto Shippuden", "One Piece", "Attack on Titan").`
             },
             {
               role: "user",
@@ -120,9 +126,9 @@ Make it controversial and fun. Use well-known anime and characters that fans lov
       if (!debate) throw new Error("Failed to parse debate from AI");
 
       // Fetch images for both options from Jikan (with small delay to avoid rate limit)
-      const imageA = await searchAnimeImage(debate.option_a);
-      await new Promise(r => setTimeout(r, 400)); // Jikan rate limit
-      const imageB = await searchAnimeImage(debate.option_b);
+      const imageA = await searchAnimeImage(debate.option_a, debate.option_a_anime);
+      await new Promise(r => setTimeout(r, 500)); // Jikan rate limit
+      const imageB = await searchAnimeImage(debate.option_b, debate.option_b_anime);
 
       // Insert into database using service role key (bypasses RLS)
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
