@@ -129,6 +129,17 @@ const MangaReader = () => {
     }
   }, [pages, translations, translating, translatePage]);
 
+  // Auto-translate when translate mode is turned on and language is selected
+  const [autoTranslateTriggered, setAutoTranslateTriggered] = useState(false);
+  useEffect(() => {
+    if (translateMode && !showLangPicker && pages.length > 0 && !autoTranslateTriggered) {
+      setAutoTranslateTriggered(true);
+      translateAllPages();
+    }
+    if (!translateMode) {
+      setAutoTranslateTriggered(false);
+    }
+  }, [translateMode, showLangPicker, pages, autoTranslateTriggered]);
   const currentIdx = chapters.findIndex((c) => c.id === chapterId);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
