@@ -29,7 +29,16 @@ serve(async (req) => {
     if (!imgRes.ok) throw new Error("Failed to fetch image");
 
     const imgBuffer = await imgRes.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+    const bytes = new Uint8Array(imgBuffer);
+    const chunkSize = 8192;
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      for (let j = 0; j < chunk.length; j++) {
+        binary += String.fromCharCode(chunk[j]);
+      }
+    }
+    const base64 = btoa(binary);
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
