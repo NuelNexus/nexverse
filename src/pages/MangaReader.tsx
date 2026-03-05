@@ -172,6 +172,8 @@ const MangaReader = () => {
       autoTranslateInProgressRef.current = false;
     }
   }, [translateMode, showLangPicker, pages.length, autoTranslateTriggered, translateAllPages]);
+
+  const currentIdx = chapters.findIndex((c) => c.id === chapterId);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
 
