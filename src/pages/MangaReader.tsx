@@ -95,7 +95,7 @@ const MangaReader = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const translatePage = useCallback(async (pageIndex: number) => {
+  const translatePage = useCallback(async (pageIndex: number, retries = 2): Promise<void> => {
     if (translations[pageIndex] || translating[pageIndex]) return;
     setTranslating((prev) => ({ ...prev, [pageIndex]: true }));
     try {
@@ -107,6 +107,12 @@ const MangaReader = () => {
         },
         body: JSON.stringify({ imageUrl: pages[pageIndex], targetLang }),
       });
+      if (res.status === 429 && retries > 0) {
+        // Wait and retry on rate limit
+        setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
+        await new Promise((r) => setTimeout(r, 3000));
+        return translatePage(pageIndex, retries - 1);
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Translation failed");
@@ -114,17 +120,21 @@ const MangaReader = () => {
       const data = await res.json();
       setTranslations((prev) => ({ ...prev, [pageIndex]: data.blocks || [] }));
     } catch (e: any) {
-      toast.error(e.message || "Translation failed");
+      toast.error(`Page ${pageIndex + 1}: ${e.message || "Translation failed"}`);
     } finally {
       setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
     }
   }, [pages, targetLang, translations, translating]);
 
-  // Auto-translate all pages when translate mode is enabled
+  // Auto-translate all pages sequentially with delay
   const translateAllPages = useCallback(async () => {
     for (let i = 0; i < pages.length; i++) {
       if (!translations[i] && !translating[i]) {
         await translatePage(i);
+        // Add delay between pages to avoid rate limiting
+        if (i < pages.length - 1) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
     }
   }, [pages, translations, translating, translatePage]);
