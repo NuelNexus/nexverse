@@ -120,6 +120,26 @@ const MangaReader = () => {
     }
   }, [pages, targetLang, translations, translating]);
 
+  // Auto-translate all pages when translate mode is enabled
+  const translateAllPages = useCallback(async () => {
+    for (let i = 0; i < pages.length; i++) {
+      if (!translations[i] && !translating[i]) {
+        await translatePage(i);
+      }
+    }
+  }, [pages, translations, translating, translatePage]);
+
+  // Auto-translate when translate mode is turned on and language is selected
+  const [autoTranslateTriggered, setAutoTranslateTriggered] = useState(false);
+  useEffect(() => {
+    if (translateMode && !showLangPicker && pages.length > 0 && !autoTranslateTriggered) {
+      setAutoTranslateTriggered(true);
+      translateAllPages();
+    }
+    if (!translateMode) {
+      setAutoTranslateTriggered(false);
+    }
+  }, [translateMode, showLangPicker, pages, autoTranslateTriggered]);
   const currentIdx = chapters.findIndex((c) => c.id === chapterId);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
@@ -230,68 +250,42 @@ const MangaReader = () => {
           <div className="max-w-3xl mx-auto flex flex-col items-center">
             {pages.map((src, i) => (
               <div key={i} className="w-full relative group">
-                <img
-                  src={src}
-                  alt={`Page ${i + 1}`}
-                  className="w-full max-w-[800px] mx-auto select-none"
-                  loading={i < 3 ? "eager" : "lazy"}
-                  onError={(e) => {
-                    const img = e.target as HTMLImageElement;
-                    if (!img.dataset.retried) {
-                      img.dataset.retried = "1";
-                      img.src = src;
-                    }
-                  }}
-                />
+                <div className="relative max-w-[800px] mx-auto">
+                  <img
+                    src={src}
+                    alt={`Page ${i + 1}`}
+                    className="w-full select-none"
+                    loading={i < 3 ? "eager" : "lazy"}
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      if (!img.dataset.retried) {
+                        img.dataset.retried = "1";
+                        img.src = src;
+                      }
+                    }}
+                  />
 
-                {/* Translation overlay */}
-                {translateMode && (
-                  <div className="w-full max-w-[800px] mx-auto">
-                    {translations[i] ? (
-                      <div className="mx-2 mb-4 p-4 rounded-lg bg-popover/95 backdrop-blur border border-border shadow-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-primary">
-                            <Languages className="w-3 h-3 inline mr-1" />
-                            Page {i + 1} — {targetLang}
-                          </span>
-                          <button
-                            onClick={() => setTranslations((prev) => {
-                              const next = { ...prev };
-                              delete next[i];
-                              return next;
-                            })}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                  {/* Translation overlay on the image */}
+                  {translateMode && translations[i] && (
+                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4 sm:p-8">
+                      <div className="w-full max-h-full overflow-y-auto">
+                        <div className="text-white text-sm sm:text-base leading-relaxed whitespace-pre-wrap text-center font-medium drop-shadow-lg">
                           {translations[i]}
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex justify-center mb-4">
-                        <button
-                          onClick={() => translatePage(i)}
-                          disabled={translating[i]}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors disabled:opacity-50"
-                        >
-                          {translating[i] ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Translating page {i + 1}...
-                            </>
-                          ) : (
-                            <>
-                              <Languages className="w-4 h-4" />
-                              Translate page {i + 1}
-                            </>
-                          )}
-                        </button>
+                    </div>
+                  )}
+
+                  {/* Translating spinner overlay */}
+                  {translateMode && translating[i] && !translations[i] && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-8 h-8 text-white animate-spin" />
+                        <span className="text-white text-xs font-medium">Translating page {i + 1}...</span>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
