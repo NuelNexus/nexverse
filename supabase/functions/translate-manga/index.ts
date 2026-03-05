@@ -41,18 +41,21 @@ serve(async (req) => {
     const base64 = btoa(binary);
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are a manga/comic text locator and translator. Given a manga page image, find ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}.
+    let response: Response | null = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a manga/comic text locator and translator. Given a manga page image, find ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}.
 
 You MUST respond with valid JSON only. No markdown, no code fences, no extra text.
 
@@ -67,26 +70,39 @@ Example: [{"text":"Hello!","x":50,"y":20,"w":15,"h":8}]
 
 Be precise with positions. Speech bubbles are usually oval/rectangular areas. Estimate the bounding box that covers each text region.
 If no text is found, return an empty array: []`
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Find all text in this manga page, give their positions as percentages, and translate to ${targetLang}. Return ONLY valid JSON array.`
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${contentType};base64,${base64}`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Find all text in this manga page, give their positions as percentages, and translate to ${targetLang}. Return ONLY valid JSON array.`
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${contentType};base64,${base64}`
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        max_tokens: 3000,
-      }),
-    });
+              ]
+            }
+          ],
+          max_tokens: 3000,
+        }),
+      });
+
+      if (response.status !== 429) break;
+
+      if (attempt < 2) {
+        const retryAfter = response.headers.get("retry-after");
+        const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : NaN;
+        const backoffMs = Math.pow(2, attempt) * 1500 + Math.floor(Math.random() * 500);
+        const waitMs = Number.isFinite(retryAfterMs) ? retryAfterMs : backoffMs;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+
+    if (!response) throw new Error("AI translation request failed");
 
     if (!response.ok) {
       const status = response.status;

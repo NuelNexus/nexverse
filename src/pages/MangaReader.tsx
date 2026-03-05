@@ -95,62 +95,83 @@ const MangaReader = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const translatePage = useCallback(async (pageIndex: number, retries = 2): Promise<void> => {
-    if (translations[pageIndex] || translating[pageIndex]) return;
+  const translatePage = useCallback(async (pageIndex: number): Promise<boolean> => {
+    if (translations[pageIndex] || translating[pageIndex]) return true;
     setTranslating((prev) => ({ ...prev, [pageIndex]: true }));
+
     try {
-      const res = await fetch(TRANSLATE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({ imageUrl: pages[pageIndex], targetLang }),
-      });
-      if (res.status === 429 && retries > 0) {
-        // Wait and retry on rate limit
-        setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
-        await new Promise((r) => setTimeout(r, 3000));
-        return translatePage(pageIndex, retries - 1);
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await fetch(TRANSLATE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ imageUrl: pages[pageIndex], targetLang }),
+        });
+
+        if (res.status === 429) {
+          const delayMs = Math.pow(2, attempt) * 1500 + Math.floor(Math.random() * 500);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Translation failed");
+        }
+
+        const data = await res.json();
+        setTranslations((prev) => ({ ...prev, [pageIndex]: data.blocks || [] }));
+        return true;
       }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Translation failed");
-      }
-      const data = await res.json();
-      setTranslations((prev) => ({ ...prev, [pageIndex]: data.blocks || [] }));
+
+      lastError = new Error("Rate limited, please try again in a moment");
+      throw lastError;
     } catch (e: any) {
       toast.error(`Page ${pageIndex + 1}: ${e.message || "Translation failed"}`);
+      return false;
     } finally {
       setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
     }
   }, [pages, targetLang, translations, translating]);
 
-  // Auto-translate all pages sequentially with delay
+  const autoTranslateInProgressRef = useRef(false);
+
+  // Auto-translate all pages sequentially with stronger spacing
   const translateAllPages = useCallback(async () => {
-    for (let i = 0; i < pages.length; i++) {
-      if (!translations[i] && !translating[i]) {
-        await translatePage(i);
-        // Add delay between pages to avoid rate limiting
-        if (i < pages.length - 1) {
-          await new Promise((r) => setTimeout(r, 1500));
+    if (autoTranslateInProgressRef.current) return;
+    autoTranslateInProgressRef.current = true;
+
+    try {
+      for (let i = 0; i < pages.length; i++) {
+        if (!translations[i] && !translating[i]) {
+          await translatePage(i);
+          if (i < pages.length - 1) {
+            await new Promise((r) => setTimeout(r, 2500));
+          }
         }
       }
+    } finally {
+      autoTranslateInProgressRef.current = false;
     }
   }, [pages, translations, translating, translatePage]);
 
-  // Auto-translate when translate mode is turned on and language is selected
+  // Auto-translate once per chapter/language selection
   const [autoTranslateTriggered, setAutoTranslateTriggered] = useState(false);
   useEffect(() => {
     if (translateMode && !showLangPicker && pages.length > 0 && !autoTranslateTriggered) {
       setAutoTranslateTriggered(true);
-      translateAllPages();
+      void translateAllPages();
     }
+
     if (!translateMode) {
       setAutoTranslateTriggered(false);
+      autoTranslateInProgressRef.current = false;
     }
-  }, [translateMode, showLangPicker, pages, autoTranslateTriggered]);
-  const currentIdx = chapters.findIndex((c) => c.id === chapterId);
+  }, [translateMode, showLangPicker, pages.length, autoTranslateTriggered, translateAllPages]);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
 
