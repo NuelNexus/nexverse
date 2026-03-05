@@ -106,9 +106,19 @@ If no text is found, return an empty array: []`
     }
 
     const data = await response.json();
-    const translation = data.choices?.[0]?.message?.content || "Translation unavailable.";
+    const raw = data.choices?.[0]?.message?.content || "[]";
+    
+    // Parse JSON from response, stripping any markdown fences
+    let blocks = [];
+    try {
+      const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      blocks = JSON.parse(cleaned);
+    } catch {
+      // Fallback: return as plain translation
+      blocks = [{ text: raw, x: 50, y: 50, w: 80, h: 80 }];
+    }
 
-    return new Response(JSON.stringify({ translation }), {
+    return new Response(JSON.stringify({ blocks }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
