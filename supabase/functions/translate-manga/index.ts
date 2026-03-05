@@ -52,24 +52,28 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a manga/comic translator. Given a manga page image, extract ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}. 
+            content: `You are a manga/comic text locator and translator. Given a manga page image, find ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}.
 
-Return ONLY the translated text in a clean, readable format:
-- One line per speech bubble or text block, in reading order
-- For sound effects, just write the translated sound naturally
-- Do NOT include numbering, original text, [SFX] tags, or any formatting markers
-- Do NOT include asterisks, stars, or decorative characters
-- Just provide the pure translated dialogue and sounds, nothing else
-- If there's no text visible, say "No text found on this page."
+You MUST respond with valid JSON only. No markdown, no code fences, no extra text.
 
-Keep translations natural and convey the tone/emotion of the original.`
+Return a JSON array where each element has:
+- "text": the translated text in ${targetLang}
+- "x": horizontal position of the text center as a percentage (0-100) of image width
+- "y": vertical position of the text center as a percentage (0-100) of image height  
+- "w": width of the text area as a percentage (0-100) of image width
+- "h": height of the text area as a percentage (0-100) of image height
+
+Example: [{"text":"Hello!","x":50,"y":20,"w":15,"h":8}]
+
+Be precise with positions. Speech bubbles are usually oval/rectangular areas. Estimate the bounding box that covers each text region.
+If no text is found, return an empty array: []`
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: `Translate all text in this manga page to ${targetLang}. Extract every speech bubble, narration box, and sound effect.`
+                text: `Find all text in this manga page, give their positions as percentages, and translate to ${targetLang}. Return ONLY valid JSON array.`
               },
               {
                 type: "image_url",
@@ -80,7 +84,7 @@ Keep translations natural and convey the tone/emotion of the original.`
             ]
           }
         ],
-        max_tokens: 2000,
+        max_tokens: 3000,
       }),
     });
 
