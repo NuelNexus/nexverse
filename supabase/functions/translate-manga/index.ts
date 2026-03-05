@@ -54,11 +54,12 @@ serve(async (req) => {
             role: "system",
             content: `You are a manga/comic translator. Given a manga page image, extract ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}. 
 
-Format your response as a clear, readable translation:
-- Number each speech bubble/text block
-- Show the original text followed by the translation
-- Include sound effects with [SFX] prefix
-- Preserve the reading order (right to left for manga, top to bottom)
+Return ONLY the translated text in a clean, readable format:
+- One line per speech bubble or text block, in reading order
+- For sound effects, just write the translated sound naturally
+- Do NOT include numbering, original text, [SFX] tags, or any formatting markers
+- Do NOT include asterisks, stars, or decorative characters
+- Just provide the pure translated dialogue and sounds, nothing else
 - If there's no text visible, say "No text found on this page."
 
 Keep translations natural and convey the tone/emotion of the original.`

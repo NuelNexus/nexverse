@@ -120,6 +120,15 @@ const MangaReader = () => {
     }
   }, [pages, targetLang, translations, translating]);
 
+  // Auto-translate all pages when translate mode is enabled
+  const translateAllPages = useCallback(async () => {
+    for (let i = 0; i < pages.length; i++) {
+      if (!translations[i] && !translating[i]) {
+        await translatePage(i);
+      }
+    }
+  }, [pages, translations, translating, translatePage]);
+
   const currentIdx = chapters.findIndex((c) => c.id === chapterId);
   const prevChapter = currentIdx > 0 ? chapters[currentIdx - 1] : null;
   const nextChapter = currentIdx < chapters.length - 1 ? chapters[currentIdx + 1] : null;
