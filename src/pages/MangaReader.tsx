@@ -32,7 +32,7 @@ const MangaReader = () => {
   const [translateMode, setTranslateMode] = useState(false);
   const [targetLang, setTargetLang] = useState("English");
   const [showLangPicker, setShowLangPicker] = useState(false);
-  const [translations, setTranslations] = useState<Record<number, string>>({});
+  const [translations, setTranslations] = useState<Record<number, Array<{text: string; x: number; y: number; w: number; h: number}>>>({});
   const [translating, setTranslating] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
@@ -112,7 +112,7 @@ const MangaReader = () => {
         throw new Error(err.error || "Translation failed");
       }
       const data = await res.json();
-      setTranslations((prev) => ({ ...prev, [pageIndex]: data.translation }));
+      setTranslations((prev) => ({ ...prev, [pageIndex]: data.blocks || [] }));
     } catch (e: any) {
       toast.error(e.message || "Translation failed");
     } finally {
@@ -265,16 +265,25 @@ const MangaReader = () => {
                     }}
                   />
 
-                  {/* Translation overlay on the image */}
-                  {translateMode && translations[i] && (
-                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4 sm:p-8">
-                      <div className="w-full max-h-full overflow-y-auto">
-                        <div className="text-white text-sm sm:text-base leading-relaxed whitespace-pre-wrap text-center font-medium drop-shadow-lg">
-                          {translations[i]}
-                        </div>
+                  {/* Translation overlays on individual text areas */}
+                  {translateMode && translations[i] && translations[i].map((block, bi) => (
+                    <div
+                      key={bi}
+                      className="absolute flex items-center justify-center pointer-events-none"
+                      style={{
+                        left: `${block.x - block.w / 2}%`,
+                        top: `${block.y - block.h / 2}%`,
+                        width: `${block.w}%`,
+                        height: `${block.h}%`,
+                      }}
+                    >
+                      <div className="bg-white rounded px-1 py-0.5 w-full h-full flex items-center justify-center overflow-hidden shadow-md">
+                        <span className="text-black text-[clamp(6px,1.2vw,13px)] leading-tight text-center font-medium" style={{ wordBreak: 'break-word' }}>
+                          {block.text}
+                        </span>
                       </div>
                     </div>
-                  )}
+                  ))}
 
                   {/* Translating spinner overlay */}
                   {translateMode && translating[i] && !translations[i] && (
