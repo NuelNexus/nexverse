@@ -1,17 +1,44 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronUp, Loader2, Languages, X, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronUp, Loader2, Languages } from "lucide-react";
 import { getChapterPages, getMangaById, getMangaChapters, mangaUtils, type MangaData, type ChapterData } from "@/lib/mangadex";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { createWorker, Worker } from "tesseract.js";
 
 const TRANSLATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate-manga`;
 
-const LANGUAGES = [
+const TARGET_LANGUAGES = [
   "English", "Spanish", "French", "German", "Portuguese",
   "Italian", "Russian", "Chinese", "Arabic", "Hindi",
   "Korean", "Japanese", "Turkish", "Indonesian", "Thai",
 ];
+
+const SOURCE_LANGUAGES: Record<string, string> = {
+  Japanese: "jpn",
+  Korean: "kor",
+  Chinese: "chi_sim",
+  English: "eng",
+};
+
+type TranslationBlock = { text: string; x: number; y: number; w: number; h: number };
+
+const loadImageToCanvas = (url: string): Promise<HTMLCanvasElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas);
+    };
+    img.onerror = () => reject(new Error("Failed to load image for OCR"));
+    img.src = url;
+  });
+};
 
 const MangaReader = () => {
   const { mangaId, chapterId } = useParams<{ mangaId: string; chapterId: string }>();
@@ -31,9 +58,38 @@ const MangaReader = () => {
   // Translation state
   const [translateMode, setTranslateMode] = useState(false);
   const [targetLang, setTargetLang] = useState("English");
+  const [sourceLang, setSourceLang] = useState("Japanese");
   const [showLangPicker, setShowLangPicker] = useState(false);
-  const [translations, setTranslations] = useState<Record<number, Array<{text: string; x: number; y: number; w: number; h: number}>>>({});
+  const [translations, setTranslations] = useState<Record<number, TranslationBlock[]>>({});
   const [translating, setTranslating] = useState<Record<number, boolean>>({});
+  const [ocrStatus, setOcrStatus] = useState("");
+
+  // Tesseract worker ref
+  const workerRef = useRef<Worker | null>(null);
+  const workerLangRef = useRef("");
+
+  const getWorker = useCallback(async (lang: string) => {
+    if (workerRef.current && workerLangRef.current === lang) {
+      return workerRef.current;
+    }
+    if (workerRef.current) {
+      await workerRef.current.terminate();
+    }
+    setOcrStatus("Loading OCR engine...");
+    const w = await createWorker(lang);
+    workerRef.current = w;
+    workerLangRef.current = lang;
+    setOcrStatus("");
+    return w;
+  }, []);
+
+  // Cleanup worker on unmount
+  useEffect(() => {
+    return () => {
+      workerRef.current?.terminate();
+      workerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!mangaId) return;
@@ -100,47 +156,90 @@ const MangaReader = () => {
     setTranslating((prev) => ({ ...prev, [pageIndex]: true }));
 
     try {
-      let lastError: Error | null = null;
+      const tessLang = SOURCE_LANGUAGES[sourceLang] || "jpn";
+      const worker = await getWorker(tessLang);
 
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const res = await fetch(TRANSLATE_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ imageUrl: pages[pageIndex], targetLang }),
-        });
+      // Load image to canvas for OCR
+      setOcrStatus(`Scanning text on page ${pageIndex + 1}...`);
+      let canvas: HTMLCanvasElement;
+      try {
+        canvas = await loadImageToCanvas(pages[pageIndex]);
+      } catch {
+        // If CORS fails, try without crossOrigin by proxying
+        toast.error(`Page ${pageIndex + 1}: Could not load image for OCR`);
+        return false;
+      }
 
-        if (res.status === 429) {
-          const delayMs = Math.pow(2, attempt) * 1500 + Math.floor(Math.random() * 500);
-          await new Promise((r) => setTimeout(r, delayMs));
-          continue;
-        }
+      const imgW = canvas.width;
+      const imgH = canvas.height;
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || "Translation failed");
-        }
+      const { data } = await worker.recognize(canvas);
+      setOcrStatus("");
 
-        const data = await res.json();
-        setTranslations((prev) => ({ ...prev, [pageIndex]: data.blocks || [] }));
+      // Use lines for better granularity than paragraphs
+      const lines = (data.lines || []).filter(
+        (line: any) => line.confidence > 15 && line.text.trim().length > 1
+      );
+
+      if (lines.length === 0) {
+        setTranslations((prev) => ({ ...prev, [pageIndex]: [] }));
         return true;
       }
 
-      lastError = new Error("Rate limited, please try again in a moment");
-      throw lastError;
+      // Prepare texts for batch translation
+      const textsToTranslate = lines.map((line: any) => line.text.trim());
+
+      const res = await fetch(TRANSLATE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ texts: textsToTranslate, targetLang }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Translation failed");
+      }
+
+      const { translations: translatedTexts } = await res.json();
+
+      // Create positioned blocks from OCR bounding boxes
+      const blocks: TranslationBlock[] = lines.map((line: any, i: number) => {
+        const bbox = line.bbox;
+        const x0pct = (bbox.x0 / imgW) * 100;
+        const y0pct = (bbox.y0 / imgH) * 100;
+        const wpct = ((bbox.x1 - bbox.x0) / imgW) * 100;
+        const hpct = ((bbox.y1 - bbox.y0) / imgH) * 100;
+
+        return {
+          text: translatedTexts[i] || line.text,
+          x: x0pct + wpct / 2,
+          y: y0pct + hpct / 2,
+          w: Math.max(wpct, 5),
+          h: Math.max(hpct, 3),
+        };
+      });
+
+      // Filter out blocks that are outside valid bounds
+      const validBlocks = blocks.filter(
+        (b) => b.x >= 0 && b.x <= 100 && b.y >= 0 && b.y <= 100 && b.text.trim().length > 0
+      );
+
+      setTranslations((prev) => ({ ...prev, [pageIndex]: validBlocks }));
+      return true;
     } catch (e: any) {
+      setOcrStatus("");
       toast.error(`Page ${pageIndex + 1}: ${e.message || "Translation failed"}`);
       return false;
     } finally {
       setTranslating((prev) => ({ ...prev, [pageIndex]: false }));
     }
-  }, [pages, targetLang, translations, translating]);
+  }, [pages, targetLang, sourceLang, translations, translating, getWorker]);
 
   const autoTranslateInProgressRef = useRef(false);
 
-  // Auto-translate all pages sequentially with stronger spacing
   const translateAllPages = useCallback(async () => {
     if (autoTranslateInProgressRef.current) return;
     autoTranslateInProgressRef.current = true;
@@ -149,8 +248,9 @@ const MangaReader = () => {
       for (let i = 0; i < pages.length; i++) {
         if (!translations[i] && !translating[i]) {
           await translatePage(i);
+          // Small delay between pages
           if (i < pages.length - 1) {
-            await new Promise((r) => setTimeout(r, 2500));
+            await new Promise((r) => setTimeout(r, 500));
           }
         }
       }
@@ -159,7 +259,6 @@ const MangaReader = () => {
     }
   }, [pages, translations, translating, translatePage]);
 
-  // Auto-translate once per chapter/language selection
   const [autoTranslateTriggered, setAutoTranslateTriggered] = useState(false);
   useEffect(() => {
     if (translateMode && !showLangPicker && pages.length > 0 && !autoTranslateTriggered) {
@@ -227,15 +326,35 @@ const MangaReader = () => {
 
               {/* Language picker dropdown */}
               {showLangPicker && (
-                <div className="absolute right-0 top-full mt-1 w-44 bg-popover border border-border rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                <div className="absolute right-0 top-full mt-1 w-56 bg-popover border border-border rounded-lg shadow-xl z-50 max-h-80 overflow-y-auto">
+                  <div className="p-2 border-b border-border">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Source language (manga text)</p>
+                    <div className="flex flex-wrap gap-1">
+                      {Object.keys(SOURCE_LANGUAGES).map((lang) => (
+                        <button
+                          key={lang}
+                          onClick={() => setSourceLang(lang)}
+                          className={`px-2 py-1 text-xs rounded transition-colors ${
+                            sourceLang === lang
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-secondary-foreground hover:bg-accent"
+                          }`}
+                        >
+                          {lang}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="p-1">
-                    {LANGUAGES.map((lang) => (
+                    <p className="text-xs font-medium text-muted-foreground px-2 py-1">Translate to</p>
+                    {TARGET_LANGUAGES.map((lang) => (
                       <button
                         key={lang}
                         onClick={() => {
                           setTargetLang(lang);
                           setShowLangPicker(false);
                           setTranslations({});
+                          setAutoTranslateTriggered(false);
                         }}
                         className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
                           targetLang === lang
@@ -269,6 +388,14 @@ const MangaReader = () => {
         </div>
       </div>
 
+      {/* OCR status bar */}
+      {ocrStatus && (
+        <div className="fixed top-14 left-0 right-0 z-40 bg-primary/90 text-primary-foreground text-center text-xs py-1">
+          <Loader2 className="w-3 h-3 inline animate-spin mr-1" />
+          {ocrStatus}
+        </div>
+      )}
+
       {/* Pages */}
       <div className="pt-14 pb-20">
         {loading ? (
@@ -288,30 +415,40 @@ const MangaReader = () => {
                     src={src}
                     alt={`Page ${i + 1}`}
                     className="w-full select-none"
+                    crossOrigin="anonymous"
                     loading={i < 3 ? "eager" : "lazy"}
                     onError={(e) => {
                       const img = e.target as HTMLImageElement;
                       if (!img.dataset.retried) {
                         img.dataset.retried = "1";
+                        // Retry without crossOrigin if CORS fails
+                        img.removeAttribute("crossorigin");
                         img.src = src;
                       }
                     }}
                   />
 
-                  {/* Translation overlays on individual text areas */}
+                  {/* Translation overlays on detected text areas */}
                   {translateMode && translations[i] && translations[i].map((block, bi) => (
                     <div
                       key={bi}
-                      className="absolute flex items-center justify-center pointer-events-none"
+                      className="absolute pointer-events-none"
                       style={{
-                        left: `${block.x - block.w / 2}%`,
-                        top: `${block.y - block.h / 2}%`,
-                        width: `${block.w}%`,
-                        height: `${block.h}%`,
+                        left: `${Math.max(0, block.x - block.w / 2)}%`,
+                        top: `${Math.max(0, block.y - block.h / 2)}%`,
+                        width: `${Math.min(block.w, 100 - Math.max(0, block.x - block.w / 2))}%`,
+                        height: `${Math.min(block.h, 100 - Math.max(0, block.y - block.h / 2))}%`,
                       }}
                     >
-                      <div className="bg-white rounded px-1 py-0.5 w-full h-full flex items-center justify-center overflow-hidden shadow-md">
-                        <span className="text-black text-[clamp(6px,1.2vw,13px)] leading-tight text-center font-medium" style={{ wordBreak: 'break-word' }}>
+                      <div className="bg-white rounded-sm px-0.5 w-full h-full flex items-center justify-center overflow-hidden shadow-sm border border-black/10">
+                        <span
+                          className="text-black leading-tight text-center font-medium"
+                          style={{
+                            fontSize: `clamp(5px, ${Math.max(block.h * 0.5, 0.8)}vw, 14px)`,
+                            wordBreak: "break-word",
+                            lineHeight: 1.1,
+                          }}
+                        >
                           {block.text}
                         </span>
                       </div>
@@ -320,10 +457,10 @@ const MangaReader = () => {
 
                   {/* Translating spinner overlay */}
                   {translateMode && translating[i] && !translations[i] && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded">
                       <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="w-8 h-8 text-white animate-spin" />
-                        <span className="text-white text-xs font-medium">Translating page {i + 1}...</span>
+                        <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        <span className="text-white text-xs font-medium">Scanning & translating...</span>
                       </div>
                     </div>
                   )}

@@ -5,143 +5,67 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const LANG_CODES: Record<string, string> = {
+  English: 'en', Spanish: 'es', French: 'fr', German: 'de', Portuguese: 'pt',
+  Italian: 'it', Russian: 'ru', Chinese: 'zh-CN', Arabic: 'ar', Hindi: 'hi',
+  Korean: 'ko', Japanese: 'ja', Turkish: 'tr', Indonesian: 'id', Thai: 'th',
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { imageUrl, targetLang = "English" } = await req.json();
-    if (!imageUrl) {
-      return new Response(JSON.stringify({ error: "Missing imageUrl" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const { texts, targetLang = "English" } = await req.json();
+
+    if (!texts || !Array.isArray(texts) || texts.length === 0) {
+      return new Response(JSON.stringify({ error: "Missing texts array" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
-
-    // Fetch the image and convert to base64 for the vision model
-    const imgRes = await fetch(imageUrl, {
-      headers: { "User-Agent": "NexusVerse/1.0", "Referer": "https://mangadex.org/" },
-    });
-    if (!imgRes.ok) throw new Error("Failed to fetch image");
-
-    const imgBuffer = await imgRes.arrayBuffer();
-    const bytes = new Uint8Array(imgBuffer);
-    const chunkSize = 8192;
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-      for (let j = 0; j < chunk.length; j++) {
-        binary += String.fromCharCode(chunk[j]);
-      }
-    }
-    const base64 = btoa(binary);
-    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-
-    let response: Response | null = null;
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `You are a manga/comic text locator and translator. Given a manga page image, find ALL visible text (speech bubbles, narration boxes, sound effects, signs) and translate them to ${targetLang}.
-
-You MUST respond with valid JSON only. No markdown, no code fences, no extra text.
-
-Return a JSON array where each element has:
-- "text": the translated text in ${targetLang}
-- "x": horizontal position of the text center as a percentage (0-100) of image width
-- "y": vertical position of the text center as a percentage (0-100) of image height  
-- "w": width of the text area as a percentage (0-100) of image width
-- "h": height of the text area as a percentage (0-100) of image height
-
-Example: [{"text":"Hello!","x":50,"y":20,"w":15,"h":8}]
-
-Be precise with positions. Speech bubbles are usually oval/rectangular areas. Estimate the bounding box that covers each text region.
-If no text is found, return an empty array: []`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `Find all text in this manga page, give their positions as percentages, and translate to ${targetLang}. Return ONLY valid JSON array.`
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${contentType};base64,${base64}`
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 3000,
-        }),
+    // Limit batch size
+    if (texts.length > 100) {
+      return new Response(JSON.stringify({ error: "Too many texts (max 100)" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
 
-      if (response.status !== 429) break;
+    const tl = LANG_CODES[targetLang] || 'en';
+    const translations: string[] = [];
 
-      if (attempt < 2) {
-        const retryAfter = response.headers.get("retry-after");
-        const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : NaN;
-        const backoffMs = Math.pow(2, attempt) * 1500 + Math.floor(Math.random() * 500);
-        const waitMs = Number.isFinite(retryAfterMs) ? retryAfterMs : backoffMs;
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
+    for (const text of texts) {
+      const trimmed = (text || '').trim();
+      if (!trimmed || trimmed.length < 2) {
+        translations.push('');
+        continue;
+      }
+
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${tl}&dt=t&q=${encodeURIComponent(trimmed)}`;
+        const res = await fetch(url);
+        
+        if (!res.ok) {
+          translations.push(trimmed);
+          continue;
+        }
+
+        const data = await res.json();
+        const translated = data[0]?.map((s: any) => s[0]).filter(Boolean).join('') || trimmed;
+        translations.push(translated);
+      } catch {
+        translations.push(trimmed);
       }
     }
 
-    if (!response) throw new Error("AI translation request failed");
-
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited, please try again in a moment" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await response.text();
-      console.error("AI gateway error:", status, errText);
-      throw new Error("AI translation failed");
-    }
-
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content || "[]";
-    
-    // Parse JSON from response, stripping any markdown fences
-    let blocks = [];
-    try {
-      const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      blocks = JSON.parse(cleaned);
-    } catch {
-      // Fallback: return as plain translation
-      blocks = [{ text: raw, x: 50, y: 50, w: 80, h: 80 }];
-    }
-
-    return new Response(JSON.stringify({ blocks }), {
+    return new Response(JSON.stringify({ translations }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("translate-manga error:", e);
-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ error: e.message || "Translation failed" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
