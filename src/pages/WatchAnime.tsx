@@ -17,39 +17,39 @@ interface EmbedSource {
 
 const EMBED_SOURCES: EmbedSource[] = [
   {
-    name: "Miruro",
+    name: "VidSrc",
     getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://www.miruro.tv/watch?id=${anilistId}&ep=${ep}` : null,
+      anilistId ? `https://vidsrc.cc/v2/embed/anime/ani${anilistId}/${ep}/sub` : null,
   },
   {
-    name: "Hianime",
+    name: "VidSrc Dub",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidsrc.cc/v2/embed/anime/ani${anilistId}/${ep}/dub` : null,
+  },
+  {
+    name: "Vidnest",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidnest.fun/anime/${anilistId}/${ep}/sub` : null,
+  },
+  {
+    name: "Vidlink",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidlink.pro/anime/${anilistId}/${ep}/sub` : null,
+  },
+  {
+    name: "Megaplay",
     getUrl: ({ malId, ep }) =>
-      `https://vidsrc.cc/v2/embed/anime/ani${malId}/${ep}/sub` ,
+      `https://megaplay.buzz/stream/s-2/${malId}/${ep}`,
   },
   {
-    name: "AnimeKai",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://2anime.xyz/embed/${anilistId}-episode-${ep}` : null,
-  },
-  {
-    name: "AutoEmbed",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://player.autoembed.cc/embed/anime/${anilistId}/${ep}/sub` : null,
-  },
-  {
-    name: "2Embed",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://www.2embed.cc/embed/anime/${anilistId}?ep=${ep}` : null,
-  },
-  {
-    name: "VidSrc.icu",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://vidsrc.icu/embed/anime/${anilistId}/${ep}/1` : null,
-  },
-  {
-    name: "AniPlay",
+    name: "2Anime",
     getUrl: ({ title, ep }) =>
-      `https://aniplaynow.live/anime/watch/${slugify(title)}?ep=${ep}`,
+      `https://2anime.xyz/embed/${slugify(title)}-episode-${ep}`,
+  },
+  {
+    name: "AnimeOwl",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://embed.anicdn.top/v/${anilistId}/${ep}` : null,
   },
 ];
 
