@@ -210,9 +210,8 @@ const WatchAnime = () => {
               src={embedUrl}
               title={`${title} Episode ${episode}`}
               allowFullScreen
-              allow="autoplay; fullscreen; encrypted-media"
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
               className="absolute inset-0 w-full h-full"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
               referrerPolicy="no-referrer"
             />
           </div>
