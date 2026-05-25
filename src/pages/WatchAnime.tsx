@@ -17,7 +17,7 @@ interface EmbedSource {
 
 const EMBED_SOURCES: EmbedSource[] = [
   {
-    name: "VidSrc",
+    name: "VidSrc Sub",
     getUrl: ({ anilistId, ep }) =>
       anilistId ? `https://vidsrc.cc/v2/embed/anime/ani${anilistId}/${ep}/sub` : null,
   },
@@ -27,14 +27,14 @@ const EMBED_SOURCES: EmbedSource[] = [
       anilistId ? `https://vidsrc.cc/v2/embed/anime/ani${anilistId}/${ep}/dub` : null,
   },
   {
-    name: "Vidnest",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://vidnest.fun/anime/${anilistId}/${ep}/sub` : null,
-  },
-  {
-    name: "Vidlink",
+    name: "Vidlink Sub",
     getUrl: ({ anilistId, ep }) =>
       anilistId ? `https://vidlink.pro/anime/${anilistId}/${ep}/sub` : null,
+  },
+  {
+    name: "Vidlink Dub",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidlink.pro/anime/${anilistId}/${ep}/dub` : null,
   },
   {
     name: "Megaplay",
@@ -45,11 +45,6 @@ const EMBED_SOURCES: EmbedSource[] = [
     name: "2Anime",
     getUrl: ({ title, ep }) =>
       `https://2anime.xyz/embed/${slugify(title)}-episode-${ep}`,
-  },
-  {
-    name: "AnimeOwl",
-    getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://embed.anicdn.top/v/${anilistId}/${ep}` : null,
   },
 ];
 
@@ -210,9 +205,8 @@ const WatchAnime = () => {
               src={embedUrl}
               title={`${title} Episode ${episode}`}
               allowFullScreen
-              allow="autoplay; fullscreen; encrypted-media"
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
               className="absolute inset-0 w-full h-full"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
               referrerPolicy="no-referrer"
             />
           </div>
