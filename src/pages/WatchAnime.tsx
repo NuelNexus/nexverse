@@ -17,29 +17,39 @@ interface EmbedSource {
 
 const EMBED_SOURCES: EmbedSource[] = [
   {
-    name: "VidSrc",
+    name: "Miruro",
     getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://vidsrc.icu/embed/anime/${anilistId}/${ep}/0` : null,
+      anilistId ? `https://www.miruro.tv/watch?id=${anilistId}&ep=${ep}` : null,
+  },
+  {
+    name: "Hianime",
+    getUrl: ({ malId, ep }) =>
+      `https://vidsrc.cc/v2/embed/anime/ani${malId}/${ep}/sub` ,
+  },
+  {
+    name: "AnimeKai",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://2anime.xyz/embed/${anilistId}-episode-${ep}` : null,
   },
   {
     name: "AutoEmbed",
-    getUrl: ({ title, ep }) =>
-      `https://anime.autoembed.cc/embed/${slugify(title)}-episode-${ep}`,
-  },
-  {
-    name: "EmbedsTo",
     getUrl: ({ anilistId, ep }) =>
-      anilistId ? `https://player.smashy.stream/anime/${anilistId}/${ep}` : null,
+      anilistId ? `https://player.autoembed.cc/embed/anime/${anilistId}/${ep}/sub` : null,
   },
   {
-    name: "2Anime",
-    getUrl: ({ title, ep }) =>
-      `https://2anime.xyz/embed/${slugify(title)}-episode-${ep}`,
+    name: "2Embed",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://www.2embed.cc/embed/anime/${anilistId}?ep=${ep}` : null,
   },
   {
-    name: "GogoAnime",
+    name: "VidSrc.icu",
+    getUrl: ({ anilistId, ep }) =>
+      anilistId ? `https://vidsrc.icu/embed/anime/${anilistId}/${ep}/1` : null,
+  },
+  {
+    name: "AniPlay",
     getUrl: ({ title, ep }) =>
-      `https://embtaku.pro/streaming.php?id=${slugify(title)}-episode-${ep}`,
+      `https://aniplaynow.live/anime/watch/${slugify(title)}?ep=${ep}`,
   },
 ];
 
